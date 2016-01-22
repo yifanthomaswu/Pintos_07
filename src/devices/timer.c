@@ -29,6 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+void wakeReady (struct thread *thread, void *aux UNUSED);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -89,11 +90,20 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  //int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  if (ticks > 0)
+  {
+	  struct thread *t = thread_current ();
+	  t->ticks = timer_ticks() + ticks;
+	  sema_init(&t->threadSleepSema, 0);
+	  sema_down(&t->threadSleepSema);
+  }
+
+//  while (timer_elapsed (start) < ticks)
+//    thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,7 +181,19 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  thread_foreach (&wakeReady, NULL);
   thread_tick ();
+}
+
+void
+wakeReady (struct thread *thread, void *aux UNUSED)
+{
+	int64_t currTicks = timer_ticks();
+	if (thread->ticks > 0 && currTicks > thread->ticks)
+	{
+		sema_up(&thread->threadSleepSema);
+		thread->ticks = 0;
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
