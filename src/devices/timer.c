@@ -30,7 +30,7 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
-void wake_ready (struct thread *thread, void *aux UNUSED);
+static void wake_ready (struct thread *thread, void *aux UNUSED);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -89,23 +89,26 @@ timer_elapsed (int64_t then)
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
+timer_sleep (int64_t ticks)
 {
-  ASSERT (intr_get_level () == INTR_ON);
-  /* A request to sleep for 0 ticks or less has no effect */
+  struct thread *t;
+
+  ASSERT(intr_get_level () == INTR_ON);
+
+  /* A request to sleep for 0 tick or less has no effect. */
   if (ticks > 0)
-  {
-	  struct thread *t = thread_current ();	/* Access current thread. */
-	  t->ticks = timer_ticks() + ticks;	/* Set up ticks to wake up at.*/
-	  sema_init(&t->can_wake, 0);		/* Initialise semaphore with 0*/
-	  sema_down(&t->can_wake);		/* "down" the semaphore. */
-	  /*
-	   * Current thread, on which sleep was called, now goes onto the
-	   * waiting list of the semaphore, causing its state to change to
-	   * BLOCKED. This means that a different thread, one that is READY
-	   * can run, and if no other threads are READY, the idle thread runs.
-	   */
-  }
+    {
+      t = thread_current ();
+      t->wake_ticks = timer_ticks () + ticks; /* Set up ticks to wake up at. */
+      sema_init (&t->can_wake, 0);            /* Initialise semaphore to 0. */
+      sema_down (&t->can_wake);               /* Down the semaphore. */
+      /*
+       * Current thread, on which sleep was called, now goes onto the
+       * waiting list of the semaphore, causing its state to change to
+       * BLOCKED. This means that a different thread, one that is READY
+       * can run, and if no other threads are READY, the idle thread runs.
+       */
+    }
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -183,25 +186,26 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  thread_foreach (&wake_ready, NULL);
   thread_tick ();
+
+  /* Check and wake up any threads ready to be woke up. */
+  thread_foreach (&wake_ready, NULL);
 }
 
-/* Wakes up any ready to wake up threads. */
-void
+/* Wake up the thread if it is ready. */
+static void
 wake_ready (struct thread *thread, void *aux UNUSED)
 {
-	int64_t current_ticks = timer_ticks();
-	/*
-	 * If the threads' 'ticks' member has been set, ie. its greater then its
-	 * initial value of 0, and is also less then the OSs currents ticks
-	 * value we can wake that thread up.
-	 */
-	if (thread->ticks > 0 && current_ticks > thread->ticks)
-	{
-		sema_up(&thread->can_wake); 	/* Up the semaphore, READY. */
-		thread->ticks = 0;		/* Reset to initial value. */
-	}
+  /*
+   * If the thread's 'wake_ticks' member has been set, i.e. it is greater then
+   * its initial value of 0, and is also less then the current timer ticks,
+   * we can wake the thread up.
+   */
+  if (thread->wake_ticks > 0 && thread->wake_ticks <= timer_ticks ())
+    {
+      sema_up (&thread->can_wake); /* Up the semaphore, READY. */
+      thread->wake_ticks = 0;      /* Reset to initial value. */
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
