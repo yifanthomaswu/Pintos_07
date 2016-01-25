@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "threads/synch.h"
+#include "threads/synch.h" 				/* Extra import required for the semaphore. */
 
 
 /* States in a thread's life cycle. */
@@ -86,15 +86,15 @@ struct thread
   {
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
-
-    uint64_t ticks;
-    struct semaphore threadSleepSema;
-
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Task 0 additional members. */
+    int64_t ticks;			/* Number of OS ticks to wake up at. */
+    struct semaphore can_wake;		/* Semaphore to put thread to sleep. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
