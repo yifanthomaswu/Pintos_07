@@ -97,6 +97,7 @@ struct thread
     /* Task 0 additional members. */
     int64_t wake_ticks;			/* The timer ticks to wake up at. */
     struct semaphore can_wake;		/* Semaphore to put thread to sleep. */
+    struct list_elem sleepelem;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
