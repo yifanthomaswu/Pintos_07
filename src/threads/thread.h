@@ -95,8 +95,8 @@ struct thread
     struct list_elem elem;           /* List element. */
 
     /* Task 0 additional members. */
-    int64_t wake_ticks;			         /* The timer ticks to wake up at. */
-    struct semaphore can_wake;		   /* Semaphore to put thread to sleep. */
+    int64_t wake_ticks;              /* The timer ticks to wake up at. */
+    struct semaphore can_wake;       /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;      /* List element for sleep threads list. */
 
 #ifdef USERPROG
