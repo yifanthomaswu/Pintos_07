@@ -94,7 +94,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;           /* List element. */
 
-    /* Task 0 additional members. */
+    /* Members for implementing alarm clock. */
     int64_t wake_ticks;              /* The timer ticks to wake up at. */
     struct semaphore can_wake;       /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;      /* List element for sleep threads list. */
