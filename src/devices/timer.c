@@ -24,6 +24,8 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+/* List of all processes that is asleep. Processes are added to this list
+   when timer_sleep is called on them and removed when they wake up. */
 static struct list sleep_list;
 
 static intr_handler_func timer_interrupt;
@@ -105,17 +107,19 @@ timer_sleep (int64_t ticks)
     {
       t = thread_current ();
       sema_init (&t->can_wake, 0); /* Initialise semaphore to 0. */
+
+      /* Disabling interrupt while set up the ticks to wake up at and
+         add the thread to sleep_list. */
       old_level = intr_disable ();
-      t->wake_ticks = start + ticks; /* Set up ticks to wake up at. */
+      t->wake_ticks = start + ticks;
       list_push_back (&sleep_list, &t->sleepelem);
       intr_set_level (old_level);
+
       sema_down (&t->can_wake); /* Down the semaphore. */
-      /*
-       * Current thread, on which sleep was called, now goes onto the
-       * waiting list of the semaphore, causing its state to change to
-       * BLOCKED. This means that a different thread, one that is READY
-       * can run, and if no other threads are READY, the idle thread runs.
-       */
+      /* Current thread, on which sleep was called, now goes onto the
+         waiting list of the semaphore, causing its state to change to
+         BLOCKED. This means that a different thread, one that is READY
+         can run, and if no other threads are READY, the idle thread runs. */
     }
 }
 
@@ -197,11 +201,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
 
   /* Check and wake up any threads ready to be woke up. */
-//  thread_forlist (&wake_ready, NULL, &sleep_list);
   wake_ready ();
 }
 
-/* Wake up the thread if it is ready. */
+/* Wake up any threads that are ready. */
 static void
 wake_ready (void)
 {
@@ -209,20 +212,21 @@ wake_ready (void)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
+  /* Iterate thought all elements in sleep_list and check if they are ready. */
   for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
        e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, sleepelem);
-      /*
-       * If the thread's 'wake_ticks' member has been set, i.e. it is greater then
-       * its initial value of 0, and is also less then the current timer ticks,
-       * we can wake the thread up.
-       */
+      /* If the thread's wake_ticks member has been set, i.e. it is greater
+         then its initial value of 0, and is also not greater then the current
+         timer ticks, we can wake the thread up. */
       if (t->wake_ticks > 0 && t->wake_ticks <= timer_ticks ())
         {
-          t->wake_ticks = 0; /* Reset to initial value. */
+          /* Reset wake_ticks to initial value, remove the thread from
+             sleep_list and up the semaphore. The thread will be READY. */
+          t->wake_ticks = 0;
           list_remove (&t->sleepelem);
-          sema_up (&t->can_wake); /* Up the semaphore, READY. */
+          sema_up (&t->can_wake);
         }
     }
 }
