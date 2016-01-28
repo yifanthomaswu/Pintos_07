@@ -108,7 +108,7 @@ timer_sleep (int64_t ticks)
       t = thread_current ();
       sema_init (&t->can_wake, 0); /* Initialise semaphore to 0. */
 
-      /* Disabling interrupt while set up the ticks to wake up at and
+      /* Disabling interrupts while set up the ticks to wake up at and
          add the thread to sleep_list. */
       old_level = intr_disable ();
       t->wake_ticks = start + ticks;
@@ -217,14 +217,12 @@ wake_ready (void)
        e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, sleepelem);
-      /* If the thread's wake_ticks member has been set, i.e. it is greater
-         then its initial value of 0, and is also not greater then the current
-         timer ticks, we can wake the thread up. */
-      if (t->wake_ticks > 0 && t->wake_ticks <= timer_ticks ())
+      /* If the thread's wake_ticks member is less then or equal to
+         the current timer ticks, we can wake the thread up. */
+      if (t->wake_ticks <= timer_ticks ())
         {
-          /* Reset wake_ticks to initial value, remove the thread from
-             sleep_list and up the semaphore. The thread will be READY. */
-          t->wake_ticks = 0;
+          /* Remove the thread from sleep_list and up the semaphore.
+             The thread will be READY. */
           list_remove (&t->sleepelem);
           sema_up (&t->can_wake);
         }
