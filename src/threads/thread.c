@@ -343,31 +343,27 @@ thread_foreach (thread_action_func *func, void *aux)
 struct thread *
 thread_highest_priority (struct list *list)
 {
-	struct list_elem *e;
-	ASSERT (intr_get_level () == INTR_OFF);
-	struct thread *highestP = NULL;
+  struct list_elem *e;
+  struct thread *highestp_t = NULL;
 
-	for (e = list_begin (list); e != list_end (list);
-			e = list_next (e))
-	{
-		struct thread *t = list_entry (e, struct thread, elem);
-		if (highestP == NULL)
-			highestP = t;
-		else
-		{
-			if (t->priority > highestP->priority)
-				highestP = t;
-		}
-	}
-	return highestP;
+  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (!list_empty (list));
+
+  for (e = list_begin (list); e != list_end (list); e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, elem);
+      if (highestp_t == NULL || t->priority > highestp_t->priority)
+        highestp_t = t;
+    }
+  return highestp_t;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
-thread_set_priority (int new_priority) 
+thread_set_priority (int new_priority)
 {
-	thread_current ()->priority = new_priority;
-	thread_yield();
+  thread_current ()->priority = new_priority;
+  thread_yield ();
 }
 
 /* Returns the current thread's priority. */
@@ -520,16 +516,16 @@ alloc_frame (struct thread *t, size_t size)
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
 static struct thread *
-next_thread_to_run (void) 
+next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
   else
-  {
-	  struct thread *highestP = thread_highest_priority(&ready_list);
-	  list_remove (&highestP->elem);
-	  return highestP;
-  }
+    {
+      struct thread *highestp_t = thread_highest_priority (&ready_list);
+      list_remove (&highestp_t->elem);
+      return highestp_t;
+    }
 }
 
 /* Completes a thread switch by activating the new thread's page

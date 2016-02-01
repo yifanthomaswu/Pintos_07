@@ -106,22 +106,22 @@ sema_try_down (struct semaphore *sema)
 
    This function may be called from an interrupt handler. */
 void
-sema_up (struct semaphore *sema) 
+sema_up (struct semaphore *sema)
 {
   enum intr_level old_level;
 
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-  {
-	  struct thread *highestP = thread_highest_priority(&sema->waiters);
-	  list_remove (&highestP->elem);
-	  thread_unblock (highestP);
-  }
+  if (!list_empty (&sema->waiters))
+    {
+      struct thread *highestp_t = thread_highest_priority (&sema->waiters);
+      list_remove (&highestp_t->elem);
+      thread_unblock (highestp_t);
+    }
   sema->value++;
-  thread_yield();
   intr_set_level (old_level);
+  thread_yield ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -313,45 +313,41 @@ cond_wait (struct condition *cond, struct lock *lock)
    make sense to try to signal a condition variable within an
    interrupt handler. */
 void
-cond_signal (struct condition *cond, struct lock *lock UNUSED) 
+cond_signal (struct condition *cond, struct lock *lock UNUSED)
 {
   enum intr_level old_level;
+
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
   old_level = intr_disable ();
-  if (!list_empty (&cond->waiters)) 
-  {
-	  struct list_elem *e;
-	  ASSERT (intr_get_level () == INTR_OFF);
-	  struct thread *highestP = NULL;
-	  struct thread *t = NULL;
-	  struct semaphore_elem *sema_elem = NULL;
+  if (!list_empty (&cond->waiters))
+    {
+      struct list_elem *e;
+      struct thread *highestp_t = NULL;
+      struct semaphore_elem *sema_elem = NULL;
 
-	  for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters);
-			  e = list_next (e))
-	  	{
-		  struct semaphore_elem *s = list_entry (e, struct semaphore_elem, elem);
-		  t = thread_highest_priority(&(&s->semaphore)->waiters);
-		  if (highestP == NULL)
-		  {
-			  highestP = t;
-			  sema_elem = s;
-		  }
-		  else
-		  {
-			  if (t->priority > highestP->priority)
-			  {
-				  highestP = t;
-				  sema_elem = s;
-			  }
-		  }
-	  	}
-	  list_remove(&sema_elem->elem);
-	  sema_up (&sema_elem->semaphore);
-  }
+      for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters);
+           e = list_next (e))
+        {
+          struct semaphore_elem *s = list_entry (e, struct semaphore_elem,
+                                                 elem);
+          struct list *waiters = &(&s->semaphore)->waiters;
+          if (!list_empty (waiters))
+            {
+              struct thread *t = thread_highest_priority (waiters);
+              if (highestp_t == NULL || t->priority > highestp_t->priority)
+                {
+                  highestp_t = t;
+                  sema_elem = s;
+                }
+            }
+        }
+      list_remove (&sema_elem->elem);
+      sema_up (&sema_elem->semaphore);
+    }
   intr_set_level (old_level);
 }
 
