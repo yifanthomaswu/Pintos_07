@@ -315,18 +315,20 @@ cond_wait (struct condition *cond, struct lock *lock)
 void
 cond_signal (struct condition *cond, struct lock *lock UNUSED) 
 {
+  enum intr_level old_level;
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  old_level = intr_disable ();
   if (!list_empty (&cond->waiters)) 
   {
 	  struct list_elem *e;
 	  ASSERT (intr_get_level () == INTR_OFF);
 	  struct thread *highestP = NULL;
 	  struct thread *t = NULL;
-	  struct semaphore_elem *sema_elem;
+	  struct semaphore_elem *sema_elem = NULL;
 
 	  for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters);
 			  e = list_next (e))
@@ -347,9 +349,10 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 			  }
 		  }
 	  	}
-	  sema_up (&list_entry (list_remove(&sema_elem->elem),
-                          struct semaphore_elem, elem)->semaphore);
+	  list_remove(&sema_elem->elem);
+	  sema_up (&sema_elem->semaphore);
   }
+  intr_set_level (old_level);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
