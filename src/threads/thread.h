@@ -23,7 +23,7 @@ typedef int tid_t;
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
-#define PRI_MAX 63                      /* Highest priority. */
+#define PRI_MAX 63                       /* Highest priority. */
 
 /* A kernel thread or user process.
 
@@ -99,6 +99,10 @@ struct thread
     struct semaphore can_wake;       /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;      /* List element for sleep threads list. */
 
+    int donated_priority;            /* TODO Comment */
+    struct list donee;               /* TODO Comment */
+    struct list_elem doneeelem;      /* TODO Comment */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;               /* Page directory. */
@@ -138,7 +142,9 @@ void thread_foreach (thread_action_func *, void *);
 
 struct thread *thread_highest_priority (struct list *);
 int thread_get_priority (void);
+int thread_get_priority (struct thread *t);
 void thread_set_priority (int);
+void thread_donate_priority (struct thread *t, int priority);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

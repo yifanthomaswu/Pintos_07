@@ -352,7 +352,7 @@ thread_highest_priority (struct list *list)
   for (e = list_begin (list); e != list_end (list); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, elem);
-      if (highestp_t == NULL || t->priority > highestp_t->priority)
+      if (highestp_t == NULL || thread_get_priority(t) > thread_get_priority(highestp_t))
         highestp_t = t;
     }
   return highestp_t;
@@ -370,7 +370,20 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  thread_get_priority(thread_current ());
+}
+
+int
+thread_get_priority (struct thread *t)
+{
+    return max(t->priority, t->donated_priority);
+}
+
+void
+thread_donate_priority (struct thread *t, int priority)
+{
+    t->donated_priority = priority;
+    thread_donate_priority(t->donee, priority);
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -392,7 +405,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
+  /* Not yet fully implemented. */
   return 0;
 }
 
