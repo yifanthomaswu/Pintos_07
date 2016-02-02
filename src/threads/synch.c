@@ -117,6 +117,7 @@ sema_up (struct semaphore *sema)
     {
       struct thread *highestp_t = thread_highest_priority (&sema->waiters);
       list_remove (&highestp_t->elem);
+      //printf("Woken up: %s\n", highestp_t->name);            ////////////////////////////////////////////
       thread_unblock (highestp_t);
     }
   sema->value++;
@@ -213,8 +214,11 @@ lock_acquire (struct lock *lock)
   }*/
   if (!sema_try_down(&lock->semaphore))
   {
-	  list_push_front(&thread_current()->donee, &lock->holder->doneeelem);
-	  thread_donate_priority (&lock->holder, thread_get_priority ());
+	  struct thread *holder_thread = lock->holder;
+	  list_push_front(&thread_current()->donee, &holder_thread->doneeelem);
+	  //(lock->holder)->donated_priority = thread_get_priority();
+	  if (thread_get_priorityT(holder_thread) < thread_get_priority())
+		  thread_donate_priority(holder_thread, thread_get_priority());
 	  sema_down (&lock->semaphore);
   }
 
@@ -252,6 +256,9 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  lock->holder->donated_priority = 0;
+  if (is_list_elem(&lock->holder->doneeelem))
+	  list_remove(&lock->holder->doneeelem);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

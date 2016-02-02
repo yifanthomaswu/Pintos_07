@@ -204,7 +204,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  list_init(&t->donee);
+  list_init(&(t->donee));
 
   intr_set_level (old_level);
 
@@ -385,9 +385,10 @@ void
 thread_donate_priority (struct thread *t, int priority)
 {
     t->donated_priority = priority;
-    if(!list_empty(&t->donee)) {
-    	struct thread *donee = list_entry(list_begin(&t->donee), struct thread, doneeelem);
-    	thread_donate_priority(donee, priority);
+    if(!list_empty(&(t->donee))) {
+    	struct thread *donee = list_entry(list_front(&(t->donee)), struct thread, doneeelem);
+//    	printf("000000000000\n");
+//    	thread_donate_priority(donee, priority);
     }
 }
 
