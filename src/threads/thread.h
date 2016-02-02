@@ -142,7 +142,7 @@ void thread_foreach (thread_action_func *, void *);
 
 struct thread *thread_highest_priority (struct list *);
 int thread_get_priority (void);
-int thread_get_priority (struct thread *t);
+int thread_get_priorityT (struct thread *t);
 void thread_set_priority (int);
 void thread_donate_priority (struct thread *t, int priority);
 

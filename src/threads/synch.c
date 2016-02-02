@@ -200,7 +200,24 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
+  /*struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  struct list * waiters = &(&lock->semaphore)->waiters;
+  for (e = list_begin (waiters); e != list_end (waiters);
+		  e = list_next (e))
+  {
+	  struct thread *t = list_entry(e, struct thread, elem);
+	  thread_set_priority (thread_get_priority ());
+  }*/
+  if (!sema_try_down(&lock->semaphore))
+  {
+	  list_push_front(&thread_current()->donee, &lock->holder->doneeelem);
+	  thread_donate_priority (&lock->holder, thread_get_priority ());
+	  sema_down (&lock->semaphore);
+  }
+
   lock->holder = thread_current ();
 }
 

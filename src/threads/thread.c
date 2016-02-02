@@ -204,6 +204,8 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  list_init(&t->donee);
+
   intr_set_level (old_level);
 
   /* Add to run queue. */
@@ -352,7 +354,7 @@ thread_highest_priority (struct list *list)
   for (e = list_begin (list); e != list_end (list); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, elem);
-      if (highestp_t == NULL || thread_get_priority(t) > thread_get_priority(highestp_t))
+      if (highestp_t == NULL || thread_get_priorityT(t) > thread_get_priorityT(highestp_t))
         highestp_t = t;
     }
   return highestp_t;
@@ -370,20 +372,23 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  thread_get_priority(thread_current ());
+  return thread_get_priorityT(thread_current ());
 }
 
 int
-thread_get_priority (struct thread *t)
+thread_get_priorityT (struct thread *t)
 {
-    return max(t->priority, t->donated_priority);
+    return t->priority > t->donated_priority ? t->priority : t->donated_priority;
 }
 
 void
 thread_donate_priority (struct thread *t, int priority)
 {
     t->donated_priority = priority;
-    thread_donate_priority(t->donee, priority);
+    if(!list_empty(&t->donee)) {
+    	struct thread *donee = list_entry(list_begin(&t->donee), struct thread, doneeelem);
+    	thread_donate_priority(donee, priority);
+    }
 }
 
 /* Sets the current thread's nice value to NICE. */
