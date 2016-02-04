@@ -58,7 +58,7 @@ is_tail (struct list_elem *elem)
 
 bool is_list_elem(struct list_elem *elem)
 {
-	return is_interior(elem) || is_tail(elem);
+	return is_interior(elem);
 }
 
 /* Initializes LIST as an empty list. */
