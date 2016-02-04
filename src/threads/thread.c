@@ -204,7 +204,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  list_init(&(t->donee));
+
 
   intr_set_level (old_level);
 
@@ -384,12 +384,14 @@ thread_get_priorityT (struct thread *t)
 void
 thread_donate_priority (struct thread *t, int priority)
 {
+    enum intr_level old_level;
+    old_level = intr_disable ();
     t->donated_priority = priority;
-    if(!list_empty(&(t->donee))) {
-    	struct thread *donee = list_entry(list_front(&(t->donee)), struct thread, doneeelem);
-//    	printf("000000000000\n");
-//    	thread_donate_priority(donee, priority);
+    if(!list_empty(&t->donee)) {
+    	struct thread *donee = list_entry(list_front(&t->donee), struct thread, doneeelem);
+    	thread_donate_priority(donee, priority);
     }
+    intr_set_level (old_level);
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -510,6 +512,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  list_init(&(t->donee));
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
