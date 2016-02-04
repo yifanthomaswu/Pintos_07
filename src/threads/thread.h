@@ -116,7 +116,7 @@ struct thread
 struct integer_item
   {
         int value;
-        struct list_elem int_elem;
+        struct list_elem intelem;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -157,5 +157,12 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void int_list_remove(struct list *list, int item);
+void int_list_change(struct list *list, int previous, int new);
+bool
+int_less_func (const struct list_elem *a,
+const struct list_elem *b,
+void *aux UNUSED);
 
 #endif /* threads/thread.h */

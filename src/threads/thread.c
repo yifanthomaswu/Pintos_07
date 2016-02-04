@@ -378,6 +378,9 @@ thread_get_priority (void)
 int
 thread_get_priorityT (struct thread *t)
 {
+//	struct list_elem *max_elem = list_max(&t->priorities, &int_less_func, NULL);
+//	struct integer_item *maxi = list_entry (max_elem, struct integer_item, intelem);
+//	t->donated_priority = maxi->value;
     return t->priority > t->donated_priority ? t->priority : t->donated_priority;
 }
 
@@ -386,7 +389,8 @@ thread_donate_priority (struct thread *t, int priority)
 {
     enum intr_level old_level;
     old_level = intr_disable ();
-    t->donated_priority = priority;
+    if(priority > t->donated_priority)
+    	t->donated_priority = priority;
     if(!list_empty(&t->donee)) {
     	struct thread *donee = list_entry(list_front(&t->donee), struct thread, doneeelem);
     	thread_donate_priority(donee, priority);
@@ -637,3 +641,44 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+void
+int_list_remove(struct list *list, int item)
+{
+	struct list_elem *e;
+
+	for (e = list_begin (list); e != list_end (list); e = list_next (e))
+	    {
+	      struct integer_item *i = list_entry (e, struct integer_item, intelem);
+	      if (i->value == item)
+	      {
+	    	  list_remove(e);
+	    	  if (i)
+	    		  free(i);
+	    	  return;
+	      }
+	    }
+}
+
+void
+int_list_change(struct list *list, int previous, int new)
+{
+	int_list_remove(list, previous);
+	struct integer_item *i = malloc(sizeof(struct integer_item));
+	ASSERT (i != NULL);
+	i->value = new;
+	list_push_front(list, &i->intelem);
+}
+
+bool
+int_less_func (const struct list_elem *a,
+const struct list_elem *b,
+void *aux UNUSED)
+{
+	struct integer_item *ai = list_entry (a, struct integer_item, intelem);
+	struct integer_item *bi = list_entry (b, struct integer_item, intelem);
+
+	return ai->value < bi->value;
+}
+
+
