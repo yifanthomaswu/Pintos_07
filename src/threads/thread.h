@@ -100,6 +100,7 @@ struct thread
     struct list_elem sleepelem;      /* List element for sleep threads list. */
 
     int donated_priority;            /* TODO Comment */
+    struct list priorities;
     struct list donee;               /* TODO Comment */
     struct list_elem doneeelem;      /* TODO Comment */
 
@@ -110,6 +111,12 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                  /* Detects stack overflow. */
+  };
+
+struct integer_item
+  {
+        int value;
+        struct list_elem int_elem;
   };
 
 /* If false (default), use round-robin scheduler.
