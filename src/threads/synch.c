@@ -200,7 +200,6 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-
   /*struct list_elem *e;
 
   ASSERT (intr_get_level () == INTR_OFF);
@@ -215,10 +214,11 @@ lock_acquire (struct lock *lock)
   if (!sema_try_down(&lock->semaphore))
   {
 	  struct thread *holder_thread = lock->holder;
-	  list_push_front(&thread_current()->donee, &holder_thread->doneeelem);
-	  //(lock->holder)->donated_priority = thread_get_priority();
 	  if (thread_get_priorityT(holder_thread) < thread_get_priority())
+	  {
+	      list_push_front(&thread_current()->donee, &holder_thread->doneeelem);
 		  thread_donate_priority(holder_thread, thread_get_priority());
+	  }
 	  sema_down (&lock->semaphore);
   }
 
@@ -256,7 +256,12 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  lock->holder->donated_priority = 0;
+  int new_priority = 0;
+  struct list_elem *e;
+  struct list *waiters = &(&lock->semaphore)->waiters;
+  if(!list_empty(waiters))
+      new_priority = thread_highest_priority(waiters);
+  lock->holder->donated_priority = new_priority;
   if (is_list_elem(&lock->holder->doneeelem))
 	  list_remove(&lock->holder->doneeelem);
   lock->holder = NULL;
