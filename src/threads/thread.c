@@ -368,9 +368,30 @@ thread_set_priority (int new_priority)
 
 /* Returns the current thread's priority. */
 int
-thread_get_priority (void) 
+thread_get_priority (void)
 {
-  return thread_current ()->priority;
+  return thread_get_t_priority (thread_current ());
+}
+
+int
+thread_get_t_priority (struct thread* thread)
+{
+  if (list_empty (&thread->donors))
+    return thread_current ()->priority;
+  else
+    {
+      struct list_elem *e;
+      int highest_priority = 0;
+      for (e = list_begin (&thread->donors); e != list_end (&thread->donors);
+           e = list_next (e))
+        {
+          struct thread *t = list_entry (e, struct thread, elem);
+          int t_priority = thread_get_t_priority (t);
+          if (t_priority > highest_priority)
+            highest_priority = t_priority;
+        }
+      return highest_priority;
+    }
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -490,6 +511,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  list_init(&t->donors);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
