@@ -222,13 +222,13 @@ lock_acquire (struct lock *lock)
 		  struct list_elem *max_elem = list_max(&lock->holder->priorities, &int_less_func, NULL);
 		  struct integer_item *maxi = list_entry (max_elem, struct integer_item, intelem);
 		  lock->holder->donated_priority = maxi->value;
-		  if(lock->priority < thread_get_priority())
-		  lock->priority = thread_get_priority();
 	  }
 	  sema_down (&lock->semaphore);
   }
 
   lock->holder = thread_current ();
+  if(lock->priority < thread_get_priority())
+    lock->priority = thread_get_priority();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
