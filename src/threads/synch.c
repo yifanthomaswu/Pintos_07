@@ -115,9 +115,9 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters))
     {
-      struct thread *highestp_t = thread_highest_priority (&sema->waiters);
-      list_remove (&highestp_t->elem);
-      thread_unblock (highestp_t);
+      struct thread *highest_p_t = thread_highest_priority (&sema->waiters);
+      list_remove (&highest_p_t->elem);
+      thread_unblock (highest_p_t);
     }
   sema->value++;
   intr_set_level (old_level);
@@ -326,7 +326,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   if (!list_empty (&cond->waiters))
     {
       struct list_elem *e;
-      struct thread *highestp_t = NULL;
+      int highest_priority = 0;
       struct semaphore_elem *sema_elem = NULL;
 
       for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters);
@@ -338,13 +338,15 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
           if (!list_empty (waiters))
             {
               struct thread *t = thread_highest_priority (waiters);
-              if (highestp_t == NULL || t->priority > highestp_t->priority)
+              int t_priority = thread_get_t_priority (t);
+              if (sema_elem == NULL || t_priority > highest_priority)
                 {
-                  highestp_t = t;
+                  highest_priority = t_priority;
                   sema_elem = s;
                 }
             }
         }
+      ASSERT (sema_elem != NULL);
       list_remove (&sema_elem->elem);
       sema_up (&sema_elem->semaphore);
     }
