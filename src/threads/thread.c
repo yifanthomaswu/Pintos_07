@@ -391,7 +391,7 @@ thread_get_t_priority (struct thread* thread)
       for (e = list_begin (&thread->donors); e != list_end (&thread->donors);
            e = list_next (e))
         {
-          struct thread *t = list_entry (e, struct thread, elem);
+          struct thread *t = list_entry (e, struct thread, donorelem);
           int t_priority = thread_get_t_priority (t);
           if (t_priority > highest_priority)
             highest_priority = t_priority;
