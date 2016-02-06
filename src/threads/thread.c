@@ -344,7 +344,8 @@ struct thread *
 thread_highest_priority (struct list *list)
 {
   struct list_elem *e;
-  struct thread *highestp_t = NULL;
+  int highest_priority = 0;
+  struct thread *highest_p_t = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (!list_empty (list));
@@ -352,10 +353,15 @@ thread_highest_priority (struct list *list)
   for (e = list_begin (list); e != list_end (list); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, elem);
-      if (highestp_t == NULL || t->priority > highestp_t->priority)
-        highestp_t = t;
+      int t_priority = thread_get_t_priority (t);
+      if (highest_p_t == NULL || t_priority > highest_priority)
+        {
+          highest_priority = t_priority;
+          highest_p_t = t;
+        }
     }
-  return highestp_t;
+  ASSERT (highest_p_t != NULL);
+  return highest_p_t;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -368,9 +374,30 @@ thread_set_priority (int new_priority)
 
 /* Returns the current thread's priority. */
 int
-thread_get_priority (void) 
+thread_get_priority (void)
 {
-  return thread_current ()->priority;
+  return thread_get_t_priority (thread_current ());
+}
+
+int
+thread_get_t_priority (struct thread* thread)
+{
+  if (list_empty (&thread->donors))
+    return thread->priority;
+  else
+    {
+      int highest_priority = 0;
+      struct list_elem *e;
+      for (e = list_begin (&thread->donors); e != list_end (&thread->donors);
+           e = list_next (e))
+        {
+          struct thread *t = list_entry (e, struct thread, donorelem);
+          int t_priority = thread_get_t_priority (t);
+          if (t_priority > highest_priority)
+            highest_priority = t_priority;
+        }
+      return highest_priority;
+    }
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -490,6 +517,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  list_init(&t->donors);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -522,9 +550,9 @@ next_thread_to_run (void)
     return idle_thread;
   else
     {
-      struct thread *highestp_t = thread_highest_priority (&ready_list);
-      list_remove (&highestp_t->elem);
-      return highestp_t;
+      struct thread *highest_p_t = thread_highest_priority (&ready_list);
+      list_remove (&highest_p_t->elem);
+      return highest_p_t;
     }
 }
 

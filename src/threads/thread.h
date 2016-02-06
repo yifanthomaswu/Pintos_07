@@ -99,6 +99,9 @@ struct thread
     struct semaphore can_wake;       /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;      /* List element for sleep threads list. */
 
+    struct list donors;
+    struct list_elem donorelem;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;               /* Page directory. */
@@ -138,6 +141,7 @@ void thread_foreach (thread_action_func *, void *);
 
 struct thread *thread_highest_priority (struct list *);
 int thread_get_priority (void);
+int thread_get_t_priority (struct thread* thread);
 void thread_set_priority (int);
 
 int thread_get_nice (void);
