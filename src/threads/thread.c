@@ -7,7 +7,6 @@
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
-#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
@@ -205,8 +204,6 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-
-
   intr_set_level (old_level);
 
   /* Add to run queue. */
@@ -355,8 +352,7 @@ thread_highest_priority (struct list *list)
   for (e = list_begin (list); e != list_end (list); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, elem);
-      if (highestp_t == NULL
-          || thread_get_priorityT (t) > thread_get_priorityT (highestp_t))
+      if (highestp_t == NULL || t->priority > highestp_t->priority)
         highestp_t = t;
     }
   return highestp_t;
@@ -372,46 +368,9 @@ thread_set_priority (int new_priority)
 
 /* Returns the current thread's priority. */
 int
-thread_get_priority (void)
+thread_get_priority (void) 
 {
-  return thread_get_priorityT (thread_current ());
-}
-
-int
-thread_get_priorityT (struct thread *t)
-{
-  enum intr_level old_level;
-  old_level = intr_disable ();
-  if (list_empty (&t->priorities))
-    {
-      t->donated_priority = 0;
-    }
-  else
-    {
-      struct list_elem *max_elem = list_max (&t->priorities, &int_less_func,
-                                             NULL);
-      struct integer_item *maxi = list_entry(max_elem, struct integer_item,
-                                             intelem);
-      t->donated_priority = maxi->value;
-    }
-  intr_set_level (old_level);
-  return t->priority > t->donated_priority ? t->priority : t->donated_priority;
-}
-
-void
-thread_donate_priority (struct thread *t, int previous, int new)
-{
-  enum intr_level old_level;
-  old_level = intr_disable ();
-  int_list_change (&t->priorities, previous, new);
-  if (!list_empty (&t->donee))
-    {
-      struct thread *donee = list_entry (list_front (&t->donee), struct thread,
-                                         doneeelem);
-      thread_donate_priority (donee, previous, new);
-    }
-  intr_set_level (old_level);
-  thread_yield ();
+  return thread_current ()->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -433,7 +392,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet fully implemented. */
+  /* Not yet implemented. */
   return 0;
 }
 
@@ -532,8 +491,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  list_init(&t->donee);
-  list_init(&t->priorities);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -657,40 +614,3 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-void
-int_list_remove (struct list *list, int item)
-{
-  struct list_elem *e;
-
-  for (e = list_begin (list); e != list_end (list); e = list_next (e))
-    {
-      struct integer_item *i = list_entry (e, struct integer_item, intelem);
-      if (i->value == item)
-        {
-          list_remove (e);
-          if (i != NULL)
-            free (i);
-          return;
-        }
-    }
-}
-
-void
-int_list_change (struct list *list, int previous, int new)
-{
-  int_list_remove (list, previous);
-  struct integer_item *i = malloc (sizeof(struct integer_item));
-  ASSERT(i != NULL);
-  i->value = new;
-  list_push_front (list, &i->intelem);
-}
-
-bool
-int_less_func (const struct list_elem *a, const struct list_elem *b,
-               void *aux UNUSED)
-{
-  struct integer_item *ai = list_entry (a, struct integer_item, intelem);
-  struct integer_item *bi = list_entry (b, struct integer_item, intelem);
-  return ai->value < bi->value;
-}
