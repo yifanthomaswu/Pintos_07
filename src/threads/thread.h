@@ -99,8 +99,12 @@ struct thread
     struct semaphore can_wake;       /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;      /* List element for sleep threads list. */
 
+    /* Members for priority donation. */
     struct list donors;
     struct list_elem donorelem;
+
+    /* Members for the BSD Scheduler. */
+    int nice;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

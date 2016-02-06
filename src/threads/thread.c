@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -53,6 +54,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
+static int32_t load_avg;        /* Avg number of ready threads over the past minute */
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -402,17 +404,17 @@ thread_get_t_priority (struct thread* thread)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int new_nice UNUSED)
 {
-  /* Not yet implemented. */
+  thread_current ()->nice = new_nice;
+  thread_yield (); // Do we really yield?
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return current_thread ()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -519,6 +521,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   list_init(&t->donors);
   t->magic = THREAD_MAGIC;
+  t->nice = 0;                      // set to parent_thread->nice here
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
