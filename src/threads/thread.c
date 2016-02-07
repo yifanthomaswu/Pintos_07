@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "threads/fixed-point.h"
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -75,7 +76,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-void recalculate_all_priorities(void);
+void recalculate_priority(struct thread *thread, void *aux UNUSED);
 int calc_priority(struct thread *);
 int calc_recent_cpu(struct thread *);
 int calc_load_avg(void);
@@ -106,6 +107,7 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   initial_thread->recent_cpu = 0;
+  initial_thread->nice = 0;
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
@@ -151,9 +153,15 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     {
-     // recalculate_all_priorities();
+      thread_foreach(&recalculate_priority, NULL);
       intr_yield_on_return ();
     }
+}
+
+void
+recalculate_priority(struct thread *thread, void *aux UNUSED)
+{
+  thread->priority = calc_priority(thread);
 }
 
 /* Prints thread statistics. */
@@ -199,6 +207,7 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   t->recent_cpu = thread_current()->recent_cpu;
+  t->nice = thread_current()->nice;
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
@@ -464,8 +473,8 @@ calc_priority (struct thread *t)
 int
 calc_recent_cpu (struct thread *t)
 {
-  /* if (timer_ticks () % TIMER_FREQ != 0)
-     return t->recent_cpu;*/
+  if (timer_ticks () % TIMER_FREQ != 0)
+     return t->recent_cpu;
 
   //Check if load_avg recalculation req?? yes
   // what bout interrupts here??
@@ -481,8 +490,8 @@ calc_recent_cpu (struct thread *t)
 int
 calc_load_avg (void)
 {
- /* if (timer_ticks () % TIMER_FREQ != 0)
-    return load_avg;*/
+  if (timer_ticks () % TIMER_FREQ != 0)
+    return load_avg;
   bool not_idle = thread_current() != idle_thread;
   int ready_threads = list_size(&ready_list) + not_idle; // not including idle
   return (INT_RND_D(MUL_FIXED_P_INT(fifty_nine_frac, load_avg)))
@@ -574,9 +583,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->nice = 0;                      // set to parent_thread->nice here
+  //t->nice = 0;                      // set to parent_thread->nice here
   if (thread_mlfqs)
-	  priority = calc_priority(t);
+	  priority = PRI_MAX - (t->nice * 2);
   t->priority = priority;
   list_init(&t->donors);
   t->magic = THREAD_MAGIC;
