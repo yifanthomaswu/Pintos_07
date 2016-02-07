@@ -6,7 +6,7 @@
 #define Q 14
 #define F (1 << Q)
 
-#define FIXED_POINT(n)          (n * Q)
+#define FIXED_POINT(n)          (n * F)
 
 #define INT_RND_D(x)            (x / F)
 #define INT_RND(x)              (x >= 0 ? ((x + F / 2) / F) : ((x - F / 2) / F))
