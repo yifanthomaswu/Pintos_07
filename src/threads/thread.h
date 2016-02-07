@@ -105,6 +105,7 @@ struct thread
 
     /* Members for the BSD Scheduler. */
     int nice;
+    int recent_cpu;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

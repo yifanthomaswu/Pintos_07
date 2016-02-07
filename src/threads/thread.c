@@ -55,6 +55,9 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 static int32_t load_avg;        /* Avg number of ready threads over the past minute */
+static const int fifty_nine_frac = DIV_FIXED_P_INT(FIXED_POINT(59), 60);
+static const int one_sixtieth_frac = DIV_FIXED_P_INT(FIXED_POINT(1), 60);
+static const int quarter_frac = DIV_FIXED_P_INT(FIXED_POINT(1), 4);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -72,6 +75,10 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+void recalculate_all_priorities(void);
+int calc_priority(struct thread *);
+int calc_recent_cpu(struct thread *);
+int calc_load_avg(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -94,9 +101,11 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  load_avg = 0;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
+  initial_thread->recent_cpu = 0;
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
@@ -134,11 +143,17 @@ thread_tick (void)
     user_ticks++;
 #endif
   else
-    kernel_ticks++;
+    {
+      kernel_ticks++;
+      t->recent_cpu++;  //for user prog too??
+    }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
+    {
+     // recalculate_all_priorities();
+      intr_yield_on_return ();
+    }
 }
 
 /* Prints thread statistics. */
@@ -183,6 +198,7 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
+  t->recent_cpu = thread_current()->recent_cpu;
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
@@ -370,6 +386,8 @@ thread_highest_priority (struct list *list)
 void
 thread_set_priority (int new_priority)
 {
+  if (thread_mlfqs)
+    return;
   thread_current ()->priority = new_priority;
   thread_yield ();
 }
@@ -384,7 +402,7 @@ thread_get_priority (void)
 int
 thread_get_t_priority (struct thread* thread)
 {
-  if (list_empty (&thread->donors))
+  if (thread_mlfqs || list_empty (&thread->donors))
     return thread->priority;
   else
     {
@@ -421,16 +439,54 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return load_avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return 100 * thread_current()->recent_cpu;
+}
+
+int
+calc_priority (struct thread *t)
+{
+  // what bout interrupts here??
+
+  /* Recalculate latest CPU usage */
+  t->recent_cpu = calc_recent_cpu(t);
+  int recent_cpu_frac = MUL_FIXED_P_INT(quarter_frac, t->recent_cpu);
+  return PRI_MAX - INT_RND_D(recent_cpu_frac) - (t->nice * 2);
+}
+
+/* Calculates and returns the threads' recent CPU usage */
+int
+calc_recent_cpu (struct thread *t)
+{
+  /* if (timer_ticks () % TIMER_FREQ != 0)
+     return t->recent_cpu;*/
+
+  //Check if load_avg recalculation req?? yes
+  // what bout interrupts here??
+
+  /* Recalculate latest load average */
+  load_avg = calc_load_avg();
+  int load_avg_frac = DIV_FIXED_P_INT(FIXED_POINT(2 * load_avg),
+                                      (2 * load_avg + 1));
+  return (INT_RND(load_avg_frac) * t->recent_cpu) + t->nice;
+}
+
+/* Calculates and returns the current system load average */
+int
+calc_load_avg (void)
+{
+ /* if (timer_ticks () % TIMER_FREQ != 0)
+    return load_avg;*/
+  bool not_idle = thread_current() != idle_thread;
+  int ready_threads = list_size(&ready_list) + not_idle; // not including idle
+  return (INT_RND_D(MUL_FIXED_P_INT(fifty_nine_frac, load_avg)))
+		  + (INT_RND_D(MUL_FIXED_P_INT(one_sixtieth_frac, ready_threads)));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -518,10 +574,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
+  t->nice = 0;                      // set to parent_thread->nice here
+  if (thread_mlfqs)
+	  priority = calc_priority(t);
   t->priority = priority;
   list_init(&t->donors);
   t->magic = THREAD_MAGIC;
-  t->nice = 0;                      // set to parent_thread->nice here
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
