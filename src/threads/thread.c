@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "threads/fixed-point.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -11,7 +12,6 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -414,7 +414,7 @@ thread_set_nice (int new_nice UNUSED)
 int
 thread_get_nice (void) 
 {
-  return current_thread ()->nice;
+  return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */

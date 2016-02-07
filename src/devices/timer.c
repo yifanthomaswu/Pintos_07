@@ -1,6 +1,7 @@
 #include "devices/timer.h"
 #include <debug.h>
 #include <inttypes.h>
+#include <list.h>
 #include <round.h>
 #include <stdio.h>
 #include "devices/pit.h"
@@ -113,8 +114,7 @@ timer_sleep (int64_t ticks)
 
       /* Disabling interrupts while add the thread to sleep_list. */
       old_level = intr_disable ();
-      list_insert_ordered (&sleep_list, &t->sleepelem, &list_less_wake (),
-			   NULL);
+      list_insert_ordered (&sleep_list, &t->sleepelem, &list_less_wake, NULL);
       intr_set_level (old_level);
 
       sema_down (&t->can_wake); /* Down the semaphore. */
