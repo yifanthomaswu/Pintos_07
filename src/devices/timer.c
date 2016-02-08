@@ -241,7 +241,7 @@ wake_ready (void)
           sema_up (&t->can_wake);
         }
       else
-	return;
+        return;
     }
 }
 
