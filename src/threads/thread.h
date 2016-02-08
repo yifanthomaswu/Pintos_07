@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/fixed-point.h"
 #include "threads/synch.h"
 
 /* States in a thread's life cycle. */
@@ -105,7 +106,7 @@ struct thread
 
     /* Members for the BSD Scheduler. */
     int nice;
-    int recent_cpu;
+    real recent_cpu;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

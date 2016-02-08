@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "devices/timer.h"
-#include "threads/fixed-point.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -55,10 +54,9 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
-static int load_avg;        /* Avg number of ready threads over the past minute */
-static const int fifty_nine_frac = DIV_FIXED_P_INT(FIXED_POINT(59), 60);
-static const int one_sixtieth_frac = DIV_FIXED_P_INT(FIXED_POINT(1), 60);
-static const int quarter_frac = DIV_FIXED_P_INT(FIXED_POINT(1), 4);
+static real load_avg;        /* Avg number of ready threads over the past minute */
+static const real FIFTY_OVER_SIXTY = div_fixed_p_int (fixed_point (59), 60);
+static const real ONE_OVER_SIXTY = div_fixed_p_int (fixed_point (1), 60);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -81,8 +79,8 @@ static bool list_less_priority (const struct list_elem *a,
                                 const struct list_elem *b, void *aux UNUSED);
 static void recalculate_priority (struct thread *thread, void *aux UNUSED);
 static int calc_priority (struct thread *);
-static int calc_recent_cpu (struct thread *);
-static int calc_load_avg (void);
+static real calc_recent_cpu (struct thread *);
+static real calc_load_avg (void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -459,14 +457,15 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void)
 {
-  return 100 * load_avg;
+  return int_rnd_nearest (mul_fixed_p_int (load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void)
 {
-  return 100 * thread_current ()->recent_cpu;
+  return int_rnd_nearest (
+      mul_fixed_p_int (thread_current ()->recent_cpu, 100));
 }
 
 static int
@@ -476,12 +475,14 @@ calc_priority (struct thread *t)
 
   /* Recalculate latest CPU usage */
   t->recent_cpu = calc_recent_cpu (t);
-  int recent_cpu_frac = MUL_FIXED_P_INT(quarter_frac, t->recent_cpu);
-  return PRI_MAX - INT_RND_D(recent_cpu_frac) - (t->nice * 2);
+  return int_rnd_zero (
+      sub_fixed_p_int (sub_fixed_ps (fixed_point (PRI_MAX),
+                                     div_fixed_p_int (t->recent_cpu, 4)),
+                       t->nice * 2));
 }
 
 /* Calculates and returns the threads' recent CPU usage */
-static int
+static real
 calc_recent_cpu (struct thread *t)
 {
   if (timer_ticks () % TIMER_FREQ != 0)
@@ -492,21 +493,23 @@ calc_recent_cpu (struct thread *t)
 
   /* Recalculate latest load average */
   load_avg = calc_load_avg ();
-  int load_avg_frac = DIV_FIXED_P_INT(FIXED_POINT(2 * load_avg),
-                                      (2 * load_avg + 1));
-  return (INT_RND(load_avg_frac) * t->recent_cpu) + t->nice;
+  real two_times_load_avg = mul_fixed_p_int (load_avg, 2);
+  real coeffcient = div_fixed_ps (two_times_load_avg,
+                                  add_fixed_p_int (two_times_load_avg, 1));
+  return add_fixed_p_int (mul_fixed_ps (coeffcient, t->recent_cpu), t->nice);
 }
 
 /* Calculates and returns the current system load average */
-static int
+static real
 calc_load_avg (void)
 {
   if (timer_ticks () % TIMER_FREQ != 0)
     return load_avg;
   bool not_idle = thread_current () != idle_thread;
   int ready_threads = list_size (&ready_list) + not_idle; // not including idle
-  return (INT_RND_D(MUL_FIXED_P_INT(fifty_nine_frac, load_avg)))
-      + (INT_RND_D(MUL_FIXED_P_INT(one_sixtieth_frac, ready_threads)));
+  return add_fixed_ps (
+      mul_fixed_ps (FIFTY_OVER_SIXTY, load_avg),
+      mul_fixed_p_int (ONE_OVER_SIXTY, ready_threads));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -595,7 +598,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   if (thread_mlfqs)
-    priority = PRI_MAX - (t->nice * 2);
+    priority = calc_priority(t);
   t->priority = priority;
   list_init(&t->donors);
   t->magic = THREAD_MAGIC;
