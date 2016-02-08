@@ -76,6 +76,8 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+bool list_less_priority (const struct list_elem *a, const struct list_elem *b,
+                void *aux UNUSED);
 void recalculate_priority(struct thread *thread, void *aux UNUSED);
 int calc_priority(struct thread *);
 int calc_recent_cpu(struct thread *);
@@ -152,16 +154,25 @@ thread_tick (void)
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
-    {
-      thread_foreach(&recalculate_priority, NULL);
-      intr_yield_on_return ();
-    }
+    intr_yield_on_return ();
+
+  if (thread_ticks % TIME_SLICE == 0)
+    thread_foreach(&recalculate_priority, NULL);
 }
 
 void
 recalculate_priority(struct thread *thread, void *aux UNUSED)
 {
   thread->priority = calc_priority(thread);
+}
+
+bool
+list_less_priority (const struct list_elem *a, const struct list_elem *b,
+                void *aux UNUSED)
+{
+  struct thread *a_t = list_entry(a, struct thread, elem);
+  struct thread *b_t = list_entry(b, struct thread, elem);
+  return a_t->priority > b_t->priority;
 }
 
 /* Prints thread statistics. */
@@ -273,7 +284,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, &list_less_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -344,7 +355,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered (&ready_list, &cur->elem, &list_less_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -434,7 +445,6 @@ void
 thread_set_nice (int new_nice UNUSED)
 {
   thread_current ()->nice = new_nice;
-  thread_yield (); // Do we really yield?
 }
 
 /* Returns the current thread's nice value. */
@@ -448,7 +458,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  return load_avg;
+  return 100 * load_avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -620,7 +630,9 @@ next_thread_to_run (void)
     return idle_thread;
   else
     {
-      struct thread *highest_p_t = thread_highest_priority (&ready_list);
+      struct thread *highest_p_t = thread_mlfqs
+	  ? list_entry(list_front(&ready_list), struct thread, elem)
+	      : thread_highest_priority (&ready_list);
       list_remove (&highest_p_t->elem);
       return highest_p_t;
     }
