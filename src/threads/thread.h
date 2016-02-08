@@ -105,8 +105,8 @@ struct thread
     struct list_elem donorelem;		 /* The list element for donors list. */
 
     /* Members for the BSD Scheduler. */
-    int nice;
-    real recent_cpu;
+    int nice;                        /* The threads niceness to donate cpu time */
+    real recent_cpu;                 /* The cpu time the thread received recently */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -150,6 +150,7 @@ int thread_get_priority (void);
 int thread_get_t_priority (struct thread* thread);
 void thread_set_priority (int);
 
+/* Functions for BSD Scheduler calculation */
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);

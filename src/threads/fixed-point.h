@@ -5,7 +5,8 @@
 
 typedef int real;
 
-#define F 16384
+/* Use fix value to avoid recalculation for every operation */
+#define F 16384                              /* F = 1 << 14 */
 
 #define fixed_point(N)         (N * F)
 
