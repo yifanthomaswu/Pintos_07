@@ -75,13 +75,13 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static bool list_less_priority (const struct list_elem *a,
-                                const struct list_elem *b, void *aux UNUSED);
 static void recalculate_priority (struct thread *t, void *aux UNUSED);
 static void recalculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static int calc_priority (struct thread *);
 static real calc_recent_cpu (struct thread *);
 static real calc_load_avg (void);
+static bool list_less_priority (const struct list_elem *a,
+                                const struct list_elem *b, void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -189,7 +189,10 @@ calc_priority (struct thread *t)
       sub_fixed_p_int (sub_fixed_ps (fixed_point (PRI_MAX),
                                      div_fixed_p_int (t->recent_cpu, 4)),
                        t->nice * 2));
-  ASSERT (PRI_MIN <= priority && priority <= PRI_MAX); // may need to change to if
+  if (priority < PRI_MIN)
+    priority = PRI_MIN;
+  else if (priority > PRI_MAX)
+    priority = PRI_MAX;
   return priority;
 }
 
@@ -220,9 +223,8 @@ static bool
 list_less_priority (const struct list_elem *a, const struct list_elem *b,
                     void *aux UNUSED)
 {
-  struct thread *a_t = list_entry (a, struct thread, elem);
-  struct thread *b_t = list_entry (b, struct thread, elem);
-  return a_t->priority > b_t->priority;
+  return list_entry (a, struct thread, elem)->priority
+      > list_entry (b, struct thread, elem)->priority;
 }
 
 /* Prints thread statistics. */

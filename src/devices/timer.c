@@ -128,7 +128,7 @@ timer_sleep (int64_t ticks)
    ascending order of wake_ticks value. */
 static bool
 list_less_wake (const struct list_elem *a, const struct list_elem *b,
-		void *aux UNUSED)
+                void *aux UNUSED)
 {
   return list_entry (a, struct thread, sleepelem)->wake_ticks
       < list_entry (b, struct thread, sleepelem)->wake_ticks;
