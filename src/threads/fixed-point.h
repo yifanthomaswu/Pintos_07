@@ -3,21 +3,22 @@
 
 #include <stdint.h>
 
-#define Q 14
-#define F (1 << Q)
+typedef int real;
 
-#define FIXED_POINT(n)          (n * F)
+#define F 16384
 
-#define INT_RND_D(x)            (x / F)
-#define INT_RND(x)              (x >= 0 ? ((x + F / 2) / F) : ((x - F / 2) / F))
+#define fixed_point(N)         (N * F)
 
-#define ADD_FIXED_PS(x, y)      (x + y)
-#define SUB_FIXED_PS(x, y)      (x - y)
-#define ADD_FIXED_P_INT(x, n)   (x + (FIXED_POINT(n)))
-#define SUB_FIXED_P_INT(x, n)   (x - (FIXED_POINT(n)))
-#define MUL_FIXED_PS(x, y)      (((int64_t) x) * y / F)
-#define MUL_FIXED_P_INT(x, n)   (x * n)
-#define DIV_FIXED_PS(x, y)      (((int64_t) x) * F / y)
-#define DIV_FIXED_P_INT(x, n)   (x / n)
+#define int_rnd_zero(X)        (X / F)
+#define int_rnd_nearest(X)     (X >= 0 ? ((X + F / 2) / F) : ((X - F / 2) / F))
+
+#define add_fixed_ps(X, Y)     (X + Y)
+#define add_fixed_p_int(X, N)  (X + (fixed_point(N)))
+#define sub_fixed_ps(X, Y)     (X - Y)
+#define sub_fixed_p_int(X, N)  (X - (fixed_point(N)))
+#define mul_fixed_ps(X, Y)     (((int64_t) X) * Y / F)
+#define mul_fixed_p_int(X, N)  (X * N)
+#define div_fixed_ps(X, Y)     (((int64_t) X) * F / Y)
+#define div_fixed_p_int(X, N)  (X / N)
 
 #endif /* threads/fixed-point.h */
