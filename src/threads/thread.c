@@ -156,7 +156,7 @@ thread_tick (void)
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
-  if (thread_ticks % TIME_SLICE == 0)
+  if (mlfqs && thread_ticks % TIME_SLICE == 0)
     thread_foreach(&recalculate_priority, NULL);
 }
 
