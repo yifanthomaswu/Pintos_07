@@ -1,7 +1,6 @@
 #include "devices/timer.h"
 #include <debug.h>
 #include <inttypes.h>
-#include <list.h>
 #include <round.h>
 #include <stdio.h>
 #include "devices/pit.h"
@@ -36,7 +35,7 @@ static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
 static bool list_less_wake (const struct list_elem *a,
-			    const struct list_elem *b, void *aux UNUSED);
+                            const struct list_elem *b, void *aux UNUSED);
 static void wake_ready (void);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
