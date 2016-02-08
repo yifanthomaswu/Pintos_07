@@ -77,7 +77,8 @@ static tid_t allocate_tid (void);
 
 static bool list_less_priority (const struct list_elem *a,
                                 const struct list_elem *b, void *aux UNUSED);
-static void recalculate_priority (struct thread *thread, void *aux UNUSED);
+static void recalculate_priority (struct thread *t, void *aux UNUSED);
+static void recalculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static int calc_priority (struct thread *);
 static real calc_recent_cpu (struct thread *);
 static real calc_load_avg (void);
@@ -155,14 +156,64 @@ thread_tick (void)
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
-  if (thread_mlfqs && thread_ticks % TIME_SLICE == 0)
-    thread_foreach (&recalculate_priority, NULL);
+  if (thread_mlfqs)
+    {
+      if (timer_ticks () % TIME_SLICE == 0)
+        thread_foreach (&recalculate_priority, NULL);
+      if (timer_ticks () % TIMER_FREQ == 0)
+        {
+          thread_foreach (&recalculate_recent_cpu, NULL);
+          load_avg = calc_load_avg();
+        }
+    }
 }
 
 static void
-recalculate_priority (struct thread *thread, void *aux UNUSED)
+recalculate_priority (struct thread *t, void *aux UNUSED)
 {
-  thread->priority = calc_priority (thread);
+  t->priority = calc_priority (t);
+}
+
+static void
+recalculate_recent_cpu (struct thread *t, void *aux UNUSED)
+{
+  t->priority = calc_recent_cpu (t);
+}
+
+static int
+calc_priority (struct thread *t)
+{
+  // what bout interrupts here??
+
+  int priority = int_rnd_zero (
+      sub_fixed_p_int (sub_fixed_ps (fixed_point (PRI_MAX),
+                                     div_fixed_p_int (t->recent_cpu, 4)),
+                       t->nice * 2));
+  ASSERT (PRI_MIN <= priority && priority <= PRI_MAX); // may need to change to if
+  return priority;
+}
+
+/* Calculates and returns the threads' recent CPU usage */
+static real
+calc_recent_cpu (struct thread *t)
+{
+  // what bout interrupts here??
+
+  real two_times_load_avg = mul_fixed_p_int (load_avg, 2);
+  real coeffcient = div_fixed_ps (two_times_load_avg,
+                                  add_fixed_p_int (two_times_load_avg, 1));
+  return add_fixed_p_int (mul_fixed_ps (coeffcient, t->recent_cpu), t->nice);
+}
+
+/* Calculates and returns the current system load average */
+static real
+calc_load_avg (void)
+{
+  bool not_idle = thread_current () != idle_thread;
+  int ready_threads = list_size (&ready_list) + not_idle; // not including idle
+  return add_fixed_ps (
+      mul_fixed_ps (FIFTY_OVER_SIXTY, load_avg),
+      mul_fixed_p_int (ONE_OVER_SIXTY, ready_threads));
 }
 
 static bool
@@ -345,15 +396,15 @@ thread_exit (void)
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
-thread_yield (void) 
+thread_yield (void)
 {
   struct thread *cur = thread_current ();
   enum intr_level old_level;
-  
+
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread)
     list_insert_ordered (&ready_list, &cur->elem, &list_less_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
@@ -466,50 +517,6 @@ thread_get_recent_cpu (void)
 {
   return int_rnd_nearest (
       mul_fixed_p_int (thread_current ()->recent_cpu, 100));
-}
-
-static int
-calc_priority (struct thread *t)
-{
-  // what bout interrupts here??
-
-  /* Recalculate latest CPU usage */
-  t->recent_cpu = calc_recent_cpu (t);
-  return int_rnd_zero (
-      sub_fixed_p_int (sub_fixed_ps (fixed_point (PRI_MAX),
-                                     div_fixed_p_int (t->recent_cpu, 4)),
-                       t->nice * 2));
-}
-
-/* Calculates and returns the threads' recent CPU usage */
-static real
-calc_recent_cpu (struct thread *t)
-{
-  if (timer_ticks () % TIMER_FREQ != 0)
-    return t->recent_cpu;
-
-  //Check if load_avg recalculation req?? yes
-  // what bout interrupts here??
-
-  /* Recalculate latest load average */
-  load_avg = calc_load_avg ();
-  real two_times_load_avg = mul_fixed_p_int (load_avg, 2);
-  real coeffcient = div_fixed_ps (two_times_load_avg,
-                                  add_fixed_p_int (two_times_load_avg, 1));
-  return add_fixed_p_int (mul_fixed_ps (coeffcient, t->recent_cpu), t->nice);
-}
-
-/* Calculates and returns the current system load average */
-static real
-calc_load_avg (void)
-{
-  if (timer_ticks () % TIMER_FREQ != 0)
-    return load_avg;
-  bool not_idle = thread_current () != idle_thread;
-  int ready_threads = list_size (&ready_list) + not_idle; // not including idle
-  return add_fixed_ps (
-      mul_fixed_ps (FIFTY_OVER_SIXTY, load_avg),
-      mul_fixed_p_int (ONE_OVER_SIXTY, ready_threads));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -631,12 +638,11 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
+  else if (thread_mlfqs)
+    return list_entry (list_pop_front (&ready_list), struct thread, elem);
   else
     {
-      struct thread *highest_p_t =
-          thread_mlfqs ?
-              list_entry (list_front (&ready_list), struct thread, elem) :
-              thread_highest_priority (&ready_list);
+      struct thread *highest_p_t = thread_highest_priority (&ready_list);
       list_remove (&highest_p_t->elem);
       return highest_p_t;
     }
