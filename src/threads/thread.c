@@ -55,7 +55,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 static real load_avg;        /* Avg number of ready threads over the past minute */
-static const real FIFTY_OVER_SIXTY = div_fixed_p_int (fixed_point (59), 60);
+static const real FIFTY_NINE_OVER_SIXTY =
+    div_fixed_p_int (fixed_point (59), 60);
 static const real ONE_OVER_SIXTY = div_fixed_p_int (fixed_point (1), 60);
 
 /* If false (default), use round-robin scheduler.
@@ -149,12 +150,8 @@ thread_tick (void)
   else
     {
       kernel_ticks++;
-      t->recent_cpu++;  //for user prog too??
+      t->recent_cpu = add_fixed_p_int (t->recent_cpu, 1);
     }
-
-  /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
 
   if (thread_mlfqs)
     {
@@ -166,6 +163,10 @@ thread_tick (void)
           load_avg = calc_load_avg();
         }
     }
+
+  /* Enforce preemption. */
+  if (++thread_ticks >= TIME_SLICE)
+    intr_yield_on_return ();
 }
 
 static void
@@ -177,7 +178,7 @@ recalculate_priority (struct thread *t, void *aux UNUSED)
 static void
 recalculate_recent_cpu (struct thread *t, void *aux UNUSED)
 {
-  t->priority = calc_recent_cpu (t);
+  t->recent_cpu = calc_recent_cpu (t);
 }
 
 static int
@@ -215,7 +216,7 @@ calc_load_avg (void)
   bool not_idle = thread_current () != idle_thread;
   int ready_threads = list_size (&ready_list) + not_idle; // not including idle
   return add_fixed_ps (
-      mul_fixed_ps (FIFTY_OVER_SIXTY, load_avg),
+      mul_fixed_ps (FIFTY_NINE_OVER_SIXTY, load_avg),
       mul_fixed_p_int (ONE_OVER_SIXTY, ready_threads));
 }
 
