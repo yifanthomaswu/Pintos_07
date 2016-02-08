@@ -497,6 +497,7 @@ thread_get_t_priority (struct thread* thread)
 void
 thread_set_nice (int new_nice)
 {
+  ASSERT (-20 <= new_nice && new_nice <= 20);
   thread_current ()->nice = new_nice;
 }
 

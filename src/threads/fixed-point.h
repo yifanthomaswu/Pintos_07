@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-typedef int real;
+typedef int32_t real;
 
 /* Use fix value to avoid recalculation for every operation */
 #define F 16384                              /* F = 1 << 14 */
@@ -17,9 +17,9 @@ typedef int real;
 #define add_fixed_p_int(X, N)  (X + (fixed_point(N)))
 #define sub_fixed_ps(X, Y)     (X - Y)
 #define sub_fixed_p_int(X, N)  (X - (fixed_point(N)))
-#define mul_fixed_ps(X, Y)     (((int64_t) X) * Y / F)
+#define mul_fixed_ps(X, Y)     ((int32_t) (((int64_t) X) * Y / F))
 #define mul_fixed_p_int(X, N)  (X * N)
-#define div_fixed_ps(X, Y)     (((int64_t) X) * F / Y)
+#define div_fixed_ps(X, Y)     ((int32_t) (((int64_t) X) * F / Y))
 #define div_fixed_p_int(X, N)  (X / N)
 
 #endif /* threads/fixed-point.h */
