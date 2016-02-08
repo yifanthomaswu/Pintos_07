@@ -101,8 +101,8 @@ struct thread
     struct list_elem sleepelem;      /* List element for sleep threads list. */
 
     /* Members for priority donation. */
-    struct list donors;
-    struct list_elem donorelem;
+    struct list donors;				 /* The list of the thread's donors. */
+    struct list_elem donorelem;		 /* The list element for donors list. */
 
     /* Members for the BSD Scheduler. */
     int nice;
