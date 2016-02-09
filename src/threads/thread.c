@@ -55,10 +55,12 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 static real load_avg;        /* Avg number of ready threads over the past minute */
+static const real FIXED_POINT_ONE = fixed_point (1);
+static const real FIXED_POINT_TWO = fixed_point (2);
+static const real FIXED_POINT_PRI_MAX = fixed_point (PRI_MAX);
 static const real FIFTY_NINE_OVER_SIXTY =
     div_fixed_p_int (fixed_point (59), 60);
-static const real ONE_OVER_SIXTY = div_fixed_p_int (fixed_point (1), 60);
-static const real FIXED_POINT_ONE = fixed_point (1);
+static const real ONE_OVER_SIXTY = div_fixed_p_int (FIXED_POINT_ONE, 60);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -191,9 +193,9 @@ calc_priority (struct thread *t)
   // what bout interrupts here??
 
   int priority = int_rnd_zero (
-      sub_fixed_p_int (sub_fixed_ps (fixed_point (PRI_MAX),
-                                     div_fixed_p_int (t->recent_cpu, 4)),
-                       t->nice * 2));
+      sub_fixed_ps (sub_fixed_ps (FIXED_POINT_PRI_MAX,
+                                 div_fixed_p_int (t->recent_cpu, 4)),
+                    mul_fixed_p_int (FIXED_POINT_TWO, t->nice)));
   if (priority < PRI_MIN)
     priority = PRI_MIN;
   else if (priority > PRI_MAX)
@@ -209,7 +211,8 @@ calc_recent_cpu (struct thread *t)
 
   real two_times_load_avg = mul_fixed_p_int (load_avg, 2);
   real coeffcient = div_fixed_ps (two_times_load_avg,
-                                  add_fixed_p_int (two_times_load_avg, 1));
+                                  add_fixed_ps (two_times_load_avg,
+                                                FIXED_POINT_ONE));
   return add_fixed_p_int (mul_fixed_ps (coeffcient, t->recent_cpu), t->nice);
 }
 
