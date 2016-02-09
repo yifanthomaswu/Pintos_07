@@ -151,13 +151,14 @@ typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
 struct thread *thread_highest_priority (struct list *);
+int thread_highest_priority_value (struct list *list);
 int thread_get_priority (void);
 int thread_get_t_priority (struct thread* thread);
-void thread_set_priority (int);
+void thread_set_priority (int new_priority);
 
 /* Functions for BSD Scheduler. */
 int thread_get_nice (void);
-void thread_set_nice (int);
+void thread_set_nice (int new_nice);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 

@@ -456,29 +456,48 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Returns the thread with the highest priority in a list. */
+/* Returns the thread with the highest priority in a list.
+   Undefined for empty list. */
 struct thread *
 thread_highest_priority (struct list *list)
 {
   struct list_elem *e;
-  int highest_priority = 0;
-  struct thread *highest_p_t = NULL;
+  int highest_priority = PRI_MIN - 1;
+  struct thread *highest_p_t = NULL;;
 
   ASSERT (intr_get_level () == INTR_OFF);
-  ASSERT (!list_empty (list));
 
   for (e = list_begin (list); e != list_end (list); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, elem);
-      int t_priority = thread_get_t_priority (t);
-      if (highest_p_t == NULL || t_priority > highest_priority)
+      int priority = thread_get_t_priority (t);
+      if (priority > highest_priority)
         {
-          highest_priority = t_priority;
+          highest_priority = priority;
           highest_p_t = t;
         }
     }
-  ASSERT (highest_p_t != NULL);
   return highest_p_t;
+}
+
+/* Returns the priority of the thread with the highest priority in a list.
+   Undefined for empty list. */
+int
+thread_highest_priority_value (struct list *list)
+{
+  struct list_elem *e;
+  int highest_priority = PRI_MIN - 1;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin (list); e != list_end (list); e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, elem);
+      int priority = thread_get_t_priority (t);
+      if (priority > highest_priority)
+        highest_priority = priority;
+    }
+  return highest_priority;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -489,15 +508,15 @@ thread_set_priority (int new_priority)
     return;
   ASSERT (PRI_MIN <= new_priority && new_priority <= PRI_MAX);
   thread_current ()->priority = new_priority;
-//  if (!list_empty (&ready_list))
-//    {
-//      if (thread_get_priority ()
-//          < thread_get_t_priority (thread_highest_priority (&ready_list)))
-//        {
-//          thread_yield ();
-//        }
-//    }
-  thread_yield ();
+
+  enum intr_level old_level = intr_disable ();
+  if (!list_empty (&ready_list)
+      && thread_get_priority () < thread_highest_priority_value (&ready_list))
+    {
+      intr_set_level (old_level);
+      thread_yield ();
+    }
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
