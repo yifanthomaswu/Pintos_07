@@ -5,8 +5,7 @@
 
 typedef int32_t real;
 
-#define Q 14
-#define F (1 << Q)
+#define F 16384                                 /* 1 << 14 */
 
 #define fixed_point(N)         (N * F)
 

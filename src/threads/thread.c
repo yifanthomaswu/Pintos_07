@@ -155,9 +155,10 @@ thread_tick (void)
 
   if (thread_mlfqs)
     {
-      if (timer_ticks () % TIME_SLICE == 0)
+      int64_t timer_ticks_v = timer_ticks ();
+      if (timer_ticks_v % TIME_SLICE == 0)
         thread_foreach (&recalculate_priority, NULL);
-      if (timer_ticks () % TIMER_FREQ == 0)
+      if (timer_ticks_v % TIMER_FREQ == 0)
         {
           thread_foreach (&recalculate_recent_cpu, NULL);
           load_avg = calc_load_avg();
