@@ -5,13 +5,13 @@
 
 typedef int32_t real;
 
-/* Use fix value to avoid recalculation for every operation */
-#define F 16384                              /* F = 1 << 14 */
+#define Q 14
+#define F (1 << Q)
 
 #define fixed_point(N)         (N * F)
 
 #define int_rnd_zero(X)        (X / F)
-#define int_rnd_nearest(X)     (X >= 0 ? ((X + F / 2) / F) : ((X - F / 2) / F))
+#define int_rnd_nearest(X)     ((X >= 0) ? ((X + F / 2) / F) : ((X - F / 2) / F))
 
 #define add_fixed_ps(X, Y)     (X + Y)
 #define add_fixed_p_int(X, N)  (X + (fixed_point(N)))
