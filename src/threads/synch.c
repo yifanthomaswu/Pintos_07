@@ -115,12 +115,16 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters))
     {
+      /* Find the waiting thread with highest priority. */
       struct thread *highest_p_t = thread_highest_priority (&sema->waiters);
+      /* Remove it from the waiting list. */
       list_remove (&highest_p_t->elem);
+      /* Wake up the highest priority thread. */
       thread_unblock (highest_p_t);
     }
   sema->value++;
   intr_set_level (old_level);
+  /* Only yield if not in external interrupt. */
   if (!intr_context ())
     thread_yield ();
 }
@@ -204,6 +208,8 @@ lock_acquire (struct lock *lock)
   if (!sema_try_down (&lock->semaphore))
     {
       struct thread *holder_thread = lock->holder;
+      /* Donate the priority of a thread trying to acquire a lock to the */
+      /* owner of the lock */
       if (thread_get_t_priority (holder_thread) < thread_get_priority ())
         list_push_front (&holder_thread->donors,
                          &thread_current ()->donorelem);
