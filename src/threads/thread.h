@@ -85,36 +85,36 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                       /* Thread identifier. */
-    enum thread_status status;       /* Thread state. */
-    char name[16];                   /* Name (for debugging purposes). */
-    uint8_t *stack;                  /* Saved stack pointer. */
-    int priority;                    /* Priority. */
-    struct list_elem allelem;        /* List element for all threads list. */
+    tid_t tid;                     /* Thread identifier. */
+    enum thread_status status;     /* Thread state. */
+    char name[16];                 /* Name (for debugging purposes). */
+    uint8_t *stack;                /* Saved stack pointer. */
+    int priority;                  /* Priority. */
+    struct list_elem allelem;      /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;           /* List element. */
+    struct list_elem elem;         /* List element. */
 
     /* Members for implementing alarm clock. */
-    int64_t wake_ticks;              /* The timer ticks to wake up at. */
-    struct semaphore can_wake;       /* Semaphore to put thread to sleep. */
-    struct list_elem sleepelem;      /* List element for sleep threads list. */
+    int64_t wake_ticks;            /* The timer ticks to wake up at. */
+    struct semaphore can_wake;     /* Semaphore to put thread to sleep. */
+    struct list_elem sleepelem;    /* List element for sleep threads list. */
 
     /* Members for priority donation. */
-    struct list donors;				 /* The list of the thread's donors. */
-    struct list_elem donorelem;		 /* The list element for donors list. */
+    struct list donors;            /* The list of the thread's donors. */
+    struct list_elem donorelem;    /* List element for donors list. */
 
     /* Members for the BSD Scheduler. */
-    int nice;                        /* The threads niceness to donate cpu time */
-    real recent_cpu;                 /* The cpu time the thread received recently */
+    int nice;                      /* The thread's niceness. */
+    real recent_cpu;               /* CPU time the thread received recently. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;               /* Page directory. */
+    uint32_t *pagedir;             /* Page directory. */
 #endif
 
     /* Owned by thread.c. */
-    unsigned magic;                  /* Detects stack overflow. */
+    unsigned magic;                /* Detects stack overflow. */
   };
 
 /* If false (default), use round-robin scheduler.

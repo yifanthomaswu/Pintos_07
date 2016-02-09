@@ -54,7 +54,9 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
-static real load_avg;        /* Avg number of ready threads over the past minute */
+static real load_avg;           /* System load average in real number. */
+
+/* Fixed-point constants for real arithmetic. */
 static const real FIXED_POINT_ONE = fixed_point (1);
 static const real FIXED_POINT_TWO = fixed_point (2);
 static const real FIXED_POINT_PRI_MAX = fixed_point (PRI_MAX);
@@ -159,15 +161,13 @@ thread_tick (void)
   if (thread_mlfqs)
     {
       int64_t ticks = timer_ticks ();
-      if (ticks % TIME_SLICE == 0)
+      if (ticks % TIMER_FREQ == 0)
         {
-          thread_foreach (&recalculate_priority, NULL);
-          if (ticks % TIMER_FREQ == 0)
-            {
-              thread_foreach (&recalculate_recent_cpu, NULL);
-              load_avg = calc_load_avg ();
-            }
+          load_avg = calc_load_avg ();
+          thread_foreach (&recalculate_recent_cpu, NULL);
         }
+      if (ticks % TIME_SLICE == 0)
+        thread_foreach (&recalculate_priority, NULL);
     }
 
   /* Enforce preemption. */
@@ -469,7 +469,14 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs)
     return;
   thread_current ()->priority = new_priority;
-  thread_yield ();
+  if (!list_empty (&ready_list))
+    {
+      if (thread_get_priority ()
+          < thread_get_t_priority (thread_highest_priority (&ready_list)))
+        {
+          thread_yield ();
+        }
+    }
 }
 
 /* Returns the current thread's priority. */
@@ -616,9 +623,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   if (thread_mlfqs)
-    priority = calc_priority(t);
+    priority = calc_priority (t);
   t->priority = priority;
-  list_init(&t->donors);
+  list_init (&t->donors);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
