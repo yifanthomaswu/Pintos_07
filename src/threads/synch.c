@@ -126,9 +126,7 @@ sema_up (struct semaphore *sema)
   intr_set_level (old_level);
   /* Only yield if not in external interrupt. */
   if (!intr_context ())
-    {
-      thread_yield ();
-    }
+    thread_yield ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -211,10 +209,8 @@ lock_acquire (struct lock *lock)
     {
       struct thread *holder_thread = lock->holder;
       if (thread_get_t_priority (holder_thread) < thread_get_priority ())
-        {
-          list_push_front (&holder_thread->donors,
-                           &thread_current ()->donorelem);
-        }
+        list_push_front (&holder_thread->donors,
+                         &thread_current ()->donorelem);
       sema_down (&lock->semaphore);
     }
   lock->holder = thread_current ();
@@ -349,42 +345,32 @@ cond_wait (struct condition *cond, struct lock *lock)
 void
 cond_signal (struct condition *cond, struct lock *lock UNUSED)
 {
-  enum intr_level old_level;
-
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  old_level = intr_disable ();
   if (!list_empty (&cond->waiters))
     {
       struct list_elem *e;
-      int highest_priority = 0;
+      int highest_priority = PRI_MIN - 1;
       struct semaphore_elem *sema_elem = NULL;
 
-      for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters);
-           e = list_next (e))
+      for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters); e =
+          list_next (e))
         {
           struct semaphore_elem *s = list_entry (e, struct semaphore_elem,
                                                  elem);
-          struct list *waiters = &(&s->semaphore)->waiters;
-          if (!list_empty (waiters))
+          int priority = thread_highest_priority_value (&s->semaphore.waiters);
+          if (priority > highest_priority)
             {
-              struct thread *t = thread_highest_priority (waiters);
-              int t_priority = thread_get_t_priority (t);
-              if (sema_elem == NULL || t_priority > highest_priority)
-                {
-                  highest_priority = t_priority;
-                  sema_elem = s;
-                }
+              highest_priority = priority;
+              sema_elem = s;
             }
         }
-      ASSERT (sema_elem != NULL);
       list_remove (&sema_elem->elem);
       sema_up (&sema_elem->semaphore);
     }
-  intr_set_level (old_level);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
