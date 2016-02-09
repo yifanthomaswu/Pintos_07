@@ -114,7 +114,8 @@ thread_init (void)
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
-  initial_thread->nice = 0;
+  /* Initial thread start with 0 nice and recent_cpu.*/
+  initial_thread->nice = NICE_INITIAL;
   initial_thread->recent_cpu = 0;
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
@@ -174,7 +175,8 @@ thread_tick (void)
       if (ticks % TIME_SLICE == 0)
         {
           thread_foreach (&recalculate_priority, NULL);
-          list_sort(&ready_list, &list_less_priority, NULL);
+          list_sort (&ready_list, &list_less_priority, NULL);
+          intr_yield_on_return ();
         }
     }
 
@@ -230,13 +232,17 @@ calc_recent_cpu (struct thread *t)
 static inline real
 calc_load_avg (void)
 {
+  /* load_avg = (59/60)*load_avg + (1/60)*ready_threads. */
+  /* not_idle is 0 if idle thread runs, 1 otherwise. */
   bool not_idle = thread_current () != idle_thread;
-  int ready_threads = list_size (&ready_list) + not_idle; // not including idle
+  int ready_threads = list_size (&ready_list) + not_idle;
   return add_fixed_ps (
       mul_fixed_ps (FIFTY_NINE_OVER_SIXTY, load_avg),
       mul_fixed_p_int (ONE_OVER_SIXTY, ready_threads));
 }
 
+/* Comparison function used to insert threads into ready_list in
+   descending order of priority value. */
 static bool
 list_less_priority (const struct list_elem *a, const struct list_elem *b,
                     void *aux UNUSED)
@@ -287,6 +293,8 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
+  /* Threads besides initial thread start with nice and recent_cpu
+     inherited from their parent thread.*/
   t->nice = thread_current ()->nice;
   t->recent_cpu = thread_current ()->recent_cpu;
   init_thread (t, name, priority);
@@ -448,6 +456,7 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+/* Returns the thread with the highest priority in a list. */
 struct thread *
 thread_highest_priority (struct list *list)
 {
@@ -478,6 +487,7 @@ thread_set_priority (int new_priority)
 {
   if (thread_mlfqs)
     return;
+  ASSERT (PRI_MIN <= new_priority && new_priority <= PRI_MAX);
   thread_current ()->priority = new_priority;
 //  if (!list_empty (&ready_list))
 //    {
@@ -497,6 +507,7 @@ thread_get_priority (void)
   return thread_get_t_priority (thread_current ());
 }
 
+/* Returns the argument thread's priority. */
 int
 thread_get_t_priority (struct thread* thread)
 {
@@ -522,7 +533,7 @@ thread_get_t_priority (struct thread* thread)
 void
 thread_set_nice (int new_nice)
 {
-  ASSERT (-20 <= new_nice && new_nice <= 20);
+  ASSERT (NICE_MIN <= new_nice && new_nice <= NICE_MAX);
   thread_current ()->nice = new_nice;
 }
 
