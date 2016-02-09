@@ -36,7 +36,7 @@ static void real_time_delay (int64_t num, int32_t denom);
 
 static bool list_less_wake (const struct list_elem *a,
                             const struct list_elem *b, void *aux UNUSED);
-static void wake_ready (void);
+static inline void wake_ready (void);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -216,7 +216,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 }
 
 /* Wake up any threads that are ready. */
-static void
+static inline void
 wake_ready (void)
 {
   struct list_elem *e;

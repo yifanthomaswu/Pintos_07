@@ -58,6 +58,7 @@ static real load_avg;        /* Avg number of ready threads over the past minute
 static const real FIFTY_NINE_OVER_SIXTY =
     div_fixed_p_int (fixed_point (59), 60);
 static const real ONE_OVER_SIXTY = div_fixed_p_int (fixed_point (1), 60);
+static const real FIXED_POINT_ONE = fixed_point (1);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -78,9 +79,9 @@ static tid_t allocate_tid (void);
 
 static void recalculate_priority (struct thread *t, void *aux UNUSED);
 static void recalculate_recent_cpu (struct thread *t, void *aux UNUSED);
-static int calc_priority (struct thread *);
-static real calc_recent_cpu (struct thread *);
-static real calc_load_avg (void);
+static inline int calc_priority (struct thread *);
+static inline real calc_recent_cpu (struct thread *);
+static inline real calc_load_avg (void);
 static bool list_less_priority (const struct list_elem *a,
                                 const struct list_elem *b, void *aux UNUSED);
 
@@ -150,18 +151,20 @@ thread_tick (void)
   else
     {
       kernel_ticks++;
-      t->recent_cpu = add_fixed_p_int (t->recent_cpu, 1);
+      t->recent_cpu = add_fixed_ps (t->recent_cpu, FIXED_POINT_ONE);
     }
 
   if (thread_mlfqs)
     {
-      int64_t timer_ticks_v = timer_ticks ();
-      if (timer_ticks_v % TIME_SLICE == 0)
-        thread_foreach (&recalculate_priority, NULL);
-      if (timer_ticks_v % TIMER_FREQ == 0)
+      int64_t ticks = timer_ticks ();
+      if (ticks % TIME_SLICE == 0)
         {
-          thread_foreach (&recalculate_recent_cpu, NULL);
-          load_avg = calc_load_avg();
+          thread_foreach (&recalculate_priority, NULL);
+          if (ticks % TIMER_FREQ == 0)
+            {
+              thread_foreach (&recalculate_recent_cpu, NULL);
+              load_avg = calc_load_avg ();
+            }
         }
     }
 
@@ -182,7 +185,7 @@ recalculate_recent_cpu (struct thread *t, void *aux UNUSED)
   t->recent_cpu = calc_recent_cpu (t);
 }
 
-static int
+static inline int
 calc_priority (struct thread *t)
 {
   // what bout interrupts here??
@@ -199,7 +202,7 @@ calc_priority (struct thread *t)
 }
 
 /* Calculates and returns the threads' recent CPU usage */
-static real
+static inline real
 calc_recent_cpu (struct thread *t)
 {
   // what bout interrupts here??
@@ -211,7 +214,7 @@ calc_recent_cpu (struct thread *t)
 }
 
 /* Calculates and returns the current system load average */
-static real
+static inline real
 calc_load_avg (void)
 {
   bool not_idle = thread_current () != idle_thread;
