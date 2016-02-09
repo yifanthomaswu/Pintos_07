@@ -60,7 +60,7 @@ static const real FIXED_POINT_TWO = fixed_point (2);
 static const real FIXED_POINT_PRI_MAX = fixed_point (PRI_MAX);
 static const real FIFTY_NINE_OVER_SIXTY =
     div_fixed_p_int (fixed_point (59), 60);
-static const real ONE_OVER_SIXTY = div_fixed_p_int (FIXED_POINT_ONE, 60);
+static const real ONE_OVER_SIXTY = div_fixed_p_int (fixed_point (1), 60);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
