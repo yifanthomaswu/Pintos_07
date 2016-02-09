@@ -150,7 +150,7 @@ int thread_get_priority (void);
 int thread_get_t_priority (struct thread* thread);
 void thread_set_priority (int);
 
-/* Functions for BSD Scheduler calculation */
+/* Functions for BSD Scheduler. */
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);

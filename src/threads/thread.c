@@ -155,19 +155,27 @@ thread_tick (void)
   else
     {
       kernel_ticks++;
+      /* Running thread's recent_cpu is incremented by 1 every timer tick. */
       t->recent_cpu = add_fixed_ps (t->recent_cpu, FIXED_POINT_ONE);
     }
 
   if (thread_mlfqs)
     {
       int64_t ticks = timer_ticks ();
+      /* Recalculates system's load_avg and every thread's recent_cpu
+         every second. */
       if (ticks % TIMER_FREQ == 0)
         {
           load_avg = calc_load_avg ();
           thread_foreach (&recalculate_recent_cpu, NULL);
         }
+      /* Recalculates every thread's priority and sort the ready_list
+         every 4 timer ticks. */
       if (ticks % TIME_SLICE == 0)
-        thread_foreach (&recalculate_priority, NULL);
+        {
+          thread_foreach (&recalculate_priority, NULL);
+          list_sort(&ready_list, &list_less_priority, NULL);
+        }
     }
 
   /* Enforce preemption. */
@@ -175,27 +183,30 @@ thread_tick (void)
     intr_yield_on_return ();
 }
 
+/* Helper function to recalculate a thread's priority. */
 static void
 recalculate_priority (struct thread *t, void *aux UNUSED)
 {
   t->priority = calc_priority (t);
 }
 
+/* Helper function to recalculate a thread's recent_cpu. */
 static void
 recalculate_recent_cpu (struct thread *t, void *aux UNUSED)
 {
   t->recent_cpu = calc_recent_cpu (t);
 }
 
+/* Calculates and returns the thread's priority. */
 static inline int
 calc_priority (struct thread *t)
 {
-  // what bout interrupts here??
-
+  /* priority = PRI_MAX - (recent_cpu / 4) - (nice * 2). */
   int priority = int_rnd_zero (
       sub_fixed_ps (sub_fixed_ps (FIXED_POINT_PRI_MAX,
                                  div_fixed_p_int (t->recent_cpu, 4)),
                     mul_fixed_p_int (FIXED_POINT_TWO, t->nice)));
+  /* Adjusts calculated priority to the valid range. */
   if (priority < PRI_MIN)
     priority = PRI_MIN;
   else if (priority > PRI_MAX)
@@ -203,12 +214,11 @@ calc_priority (struct thread *t)
   return priority;
 }
 
-/* Calculates and returns the threads' recent CPU usage */
+/* Calculates and returns the thread's recent CPU usage. */
 static inline real
 calc_recent_cpu (struct thread *t)
 {
-  // what bout interrupts here??
-
+  /* recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice. */
   real two_times_load_avg = mul_fixed_p_int (load_avg, 2);
   real coeffcient = div_fixed_ps (two_times_load_avg,
                                   add_fixed_ps (two_times_load_avg,
@@ -216,7 +226,7 @@ calc_recent_cpu (struct thread *t)
   return add_fixed_p_int (mul_fixed_ps (coeffcient, t->recent_cpu), t->nice);
 }
 
-/* Calculates and returns the current system load average */
+/* Calculates and returns the current system load average. */
 static inline real
 calc_load_avg (void)
 {
@@ -469,14 +479,15 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs)
     return;
   thread_current ()->priority = new_priority;
-  if (!list_empty (&ready_list))
-    {
-      if (thread_get_priority ()
-          < thread_get_t_priority (thread_highest_priority (&ready_list)))
-        {
-          thread_yield ();
-        }
-    }
+//  if (!list_empty (&ready_list))
+//    {
+//      if (thread_get_priority ()
+//          < thread_get_t_priority (thread_highest_priority (&ready_list)))
+//        {
+//          thread_yield ();
+//        }
+//    }
+  thread_yield ();
 }
 
 /* Returns the current thread's priority. */

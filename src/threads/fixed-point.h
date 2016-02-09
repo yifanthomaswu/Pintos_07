@@ -3,22 +3,29 @@
 
 #include <stdint.h>
 
+/* Signed 32-bit integer type used for real arithmetic. */
 typedef int32_t real;
 
-#define F 16384                                 /* 1 << 14 */
+/* Magic number F used to avoid recalculation of "1 << 14".*/
+#define _MAGIC_F_ 16384
 
-#define fixed_point(N)         (N * F)
+/* Convert N to fixed point. */
+#define fixed_point(N)         (N * _MAGIC_F_)
+/* Convert X to integer (rounding toward zero). */
+#define int_rnd_zero(X)        (X / _MAGIC_F_)
+/* Convert X to integer (rounding to nearest). */
+#define int_rnd_nearest(X)     (X > 0 ? ((X + _MAGIC_F_ / 2) / _MAGIC_F_) : \
+                                        ((X - _MAGIC_F_ / 2) / _MAGIC_F_))
 
-#define int_rnd_zero(X)        (X / F)
-#define int_rnd_nearest(X)     (X > 0 ? ((X + F / 2) / F) : ((X - F / 2) / F))
-
+/* Fixed-point arithmetic between two real numbers. */
 #define add_fixed_ps(X, Y)     (X + Y)
-#define add_fixed_p_int(X, N)  (X + fixed_point(N))
 #define sub_fixed_ps(X, Y)     (X - Y)
+#define mul_fixed_ps(X, Y)     ((int32_t) (((int64_t) X) * Y / _MAGIC_F_))
+#define div_fixed_ps(X, Y)     ((int32_t) (((int64_t) X) * _MAGIC_F_ / Y))
+/* Fixed-point arithmetic between a real number and an integer. */
+#define add_fixed_p_int(X, N)  (X + fixed_point(N))
 #define sub_fixed_p_int(X, N)  (X - fixed_point(N))
-#define mul_fixed_ps(X, Y)     ((int32_t) (((int64_t) X) * Y / F))
 #define mul_fixed_p_int(X, N)  (X * N)
-#define div_fixed_ps(X, Y)     ((int32_t) (((int64_t) X) * F / Y))
 #define div_fixed_p_int(X, N)  (X / N)
 
 #endif /* threads/fixed-point.h */
