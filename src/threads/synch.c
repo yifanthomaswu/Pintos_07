@@ -208,6 +208,8 @@ lock_acquire (struct lock *lock)
   if (!sema_try_down (&lock->semaphore))
     {
       struct thread *holder_thread = lock->holder;
+      /* Donate the priority of a thread trying to acquire a lock to the */
+      /* owner of the lock */
       if (thread_get_t_priority (holder_thread) < thread_get_priority ())
         list_push_front (&holder_thread->donors,
                          &thread_current ()->donorelem);
