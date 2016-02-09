@@ -357,7 +357,9 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
         {
           struct semaphore_elem *s = list_entry (e, struct semaphore_elem,
                                                  elem);
+          enum intr_level old_level = intr_disable ();
           int priority = thread_highest_priority_value (&s->semaphore.waiters);
+          intr_set_level (old_level);
           if (priority > highest_priority)
             {
               highest_priority = priority;
