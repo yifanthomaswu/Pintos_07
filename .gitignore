@@ -2,3 +2,4 @@
 .project
 .settings/
 src/devices/build/
+Debug/
