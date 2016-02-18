@@ -114,7 +114,8 @@ struct thread
     real recent_cpu;               /* CPU time the thread received recently. */
 
     struct list children;
-    struct list_elem childrenelem;
+    struct list_elem childelem;
+    struct semaphore waiting;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
