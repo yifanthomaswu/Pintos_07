@@ -7,6 +7,16 @@
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
 
+struct exitstatus
+  {
+    struct list_elem statuselem;
+    pid_t pid;
+    int status;
+    bool waited_on;
+  };
+
+struct list statuses;
+
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
 
@@ -16,6 +26,7 @@ int write (int fd, const void *buffer, unsigned size);
 void
 syscall_init (void) 
 {
+  list_init(statuses);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 

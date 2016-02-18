@@ -113,6 +113,9 @@ struct thread
     int nice;                      /* The thread's niceness. */
     real recent_cpu;               /* CPU time the thread received recently. */
 
+    struct list children;
+    struct list_elem childrenelem;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;             /* Page directory. */
