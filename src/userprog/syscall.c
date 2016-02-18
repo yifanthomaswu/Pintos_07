@@ -25,17 +25,46 @@ syscall_handler (struct intr_frame *f)
   void *sp = syscall_user_memory (f->esp);
   switch ((int) sp)
     {
-    case SYS_HALT:
-      halt();
-      break;
-    case SYS_EXIT:
-      f->eax = (int) (sp + 4);
-      exit ();
-      break;
-    case SYS_
-    case SYS_WRITE:
-      f->eax = write((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
-      break;
+    case SYS_HALT:                   /* Halt the operating system. */
+        halt();
+        break;
+    case SYS_EXIT:                   /* Terminate this process. */
+        f->eax = (int) (sp + 4);
+        exit ();
+        break;
+    case SYS_EXEC:                   /* Start another process. */
+        f->eax = exec ((char) (sp + 4));
+        break;
+    case SYS_WAIT:                   /* Wait for a child process to die. */
+        f->eax = wait ((int) (sp + 4));
+        break;
+    case SYS_CREATE:                 /* Create a file. */
+        f->eax = create ((char) (sp + 4), (unsigned) (sp + 8));
+        break;
+    case SYS_REMOVE:                 /* Delete a file. */
+        f->eax = remove ((char) (sp + 4));
+        break;
+    case SYS_OPEN:                   /* Open a file. */
+        f->eax = open ((char) (sp + 4));
+        break;
+    case SYS_FILESIZE:               /* Obtain a file's size. */
+        f->eax = filesize ((int) (sp + 4));
+        break;
+    case SYS_READ:                   /* Read from a file. */
+        f->eax = read ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
+        break;
+    case SYS_WRITE:                  /* Write to a file. */
+        f->eax = write ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
+        break;
+    case SYS_SEEK:                   /* Change position in a file. */
+        f->eax = seek ((int) (sp + 4), (unsigned) (sp + 8));
+        break;
+    case SYS_TELL:                   /* Report current position in a file. */
+        f->eax = tell ((int) (sp + 4));
+        break;
+    case SYS_CLOSE:                  /* Close a file. */
+        f->eax = close ((int) (sp + 4));
+        break;
     }
 }
 
