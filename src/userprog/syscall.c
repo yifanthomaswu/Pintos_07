@@ -24,10 +24,14 @@ syscall_handler (struct intr_frame *f)
   void *sp = syscall_user_memory (f->esp);
   switch ((int) sp)
     {
+    case SYS_HALT:
+      halt();
+      break;
     case SYS_EXIT:
       f->eax = (int) (sp + 4);
       exit ();
       break;
+    case SYS_
     case SYS_WRITE:
       f->eax = write((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
       break;
@@ -41,6 +45,13 @@ syscall_user_memory (const void *vaddr)
     return pagedir_get_page (thread_current ()->pagedir, vaddr);
   else
     return NULL;
+}
+
+void
+halt (void)
+{
+  shutdown_power_off();
+  NOT_REACHED ();
 }
 
 void
