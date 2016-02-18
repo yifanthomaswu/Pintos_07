@@ -5,6 +5,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
@@ -50,14 +51,55 @@ syscall_user_memory (const void *vaddr)
 void
 halt (void)
 {
-  shutdown_power_off();
-  NOT_REACHED ();
+    shutdown_power_off ();
 }
 
 void
 exit (void)
 {
   thread_exit ();
+}
+
+pid_t
+exec (const char *cmd_line)
+{
+    return -1;
+}
+
+int
+wait (pid_t pid)
+{
+    return -1;
+}
+
+bool
+create (const char *file, unsigned initial_size)
+{
+    return false;
+}
+
+bool
+remove (const char *file)
+{
+    return false;
+}
+
+int
+open (const char *file)
+{
+    return -1;
+}
+
+int
+filesize (int fd)
+{
+    return -1;
+}
+
+int
+read (int fd, void *buffer, unsigned size)
+{
+    return -1;
 }
 
 int
@@ -70,4 +112,22 @@ write (int fd, const void *buffer, unsigned size)
     }
   else
     return 0;
+}
+
+void
+seek (int fd, unsigned position)
+{
+    return;
+}
+
+unsigned
+tell (int fd)
+{
+    return -1;
+}
+
+void
+close (int fd)
+{
+    return;
 }
