@@ -667,6 +667,7 @@ init_thread (struct thread *t, const char *name, int priority)
     priority = calc_priority (t);
   t->priority = priority;
   list_init (&t->donors);
+  list_init (&t->children);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

@@ -35,6 +35,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
+  printf("abc");
   void *sp = syscall_user_memory (f->esp);
   switch ((int) sp)
     {
@@ -66,9 +67,9 @@ syscall_handler (struct intr_frame *f)
 //    case SYS_READ:                   /* Read from a file. */
 //        f->eax = read ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
 //        break;
-//    case SYS_WRITE:                  /* Write to a file. */
-//        f->eax = write ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
-//        break;
+    case SYS_WRITE:                  /* Write to a file. */
+        f->eax = write ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
+        break;
 //    case SYS_SEEK:                   /* Change position in a file. */
 //        f->eax = seek ((int) (sp + 4), (unsigned) (sp + 8));
 //        break;
@@ -89,7 +90,7 @@ syscall_user_memory (const void *vaddr)
   else
     return NULL;
 }
-//
+
 //void
 //halt (void)
 //{
@@ -156,6 +157,8 @@ write (int fd, const void *buffer, unsigned size)
   if (fd == STDOUT_FILENO)
     {
       putbuf (buffer, size);
+//      char c[3] = {'1','2','3'};
+//      putbuf (&c, 2);
       return size;
     }
   else
