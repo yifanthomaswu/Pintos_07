@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -86,9 +87,30 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid)
 {
-  return -1;
+  struct thread *t = thread_current ();
+
+  if (!is_child (child_tid) || is_dead (child_tid))
+    return -1;
+
+  sema_init (&t->waiting, 0);
+  sema_down (&t->waiting);
+  return get_exit_code (child_tid);
+}
+
+bool
+is_child (tid_t tid)
+{
+  struct list *children = &thread_current ()->children;
+  struct list_elem *e;
+  for (e = list_begin (children); e != list_end (children); e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, childelem);
+      if (t->tid == tid)
+        return true;
+    }
+  return false;
 }
 
 /* Free the current process's resources. */
@@ -437,7 +459,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }

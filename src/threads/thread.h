@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -98,6 +99,10 @@ struct thread
     int64_t wake_ticks;            /* The timer ticks to wake up at. */
     struct semaphore can_wake;     /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;    /* List element for sleep threads list. */
+
+    struct list children;
+    struct list_elem childelem;
+    struct semaphore waiting;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
