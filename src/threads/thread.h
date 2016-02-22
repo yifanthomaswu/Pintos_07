@@ -83,23 +83,29 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+    tid_t tid;                     /* Thread identifier. */
+    enum thread_status status;     /* Thread state. */
+    char name[16];                 /* Name (for debugging purposes). */
+    uint8_t *stack;                /* Saved stack pointer. */
+    int priority;                  /* Priority. */
+    struct list_elem allelem;      /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;         /* List element. */
+
+
+    /* Members for implementing alarm clock. */
+    int64_t wake_ticks;            /* The timer ticks to wake up at. */
+    struct semaphore can_wake;     /* Semaphore to put thread to sleep. */
+    struct list_elem sleepelem;    /* List element for sleep threads list. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;             /* Page directory. */
 #endif
 
     /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
+    unsigned magic;                /* Detects stack overflow. */
   };
 
 /* If false (default), use round-robin scheduler.
