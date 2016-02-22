@@ -35,7 +35,8 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  printf("abc");
+  printf("syscall_handler\n");
+  return;
   void *sp = syscall_user_memory (f->esp);
   switch ((int) sp)
     {
@@ -100,6 +101,7 @@ syscall_user_memory (const void *vaddr)
 static void
 exit (void)
 {
+  process_exit ();
   thread_exit ();
 }
 

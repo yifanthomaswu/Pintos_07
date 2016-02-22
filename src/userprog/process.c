@@ -29,7 +29,8 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  printf("process_execute\n");
+  char *fn_copy, *fn_copy_tmp;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,8 +40,19 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  fn_copy_tmp = palloc_get_page (0);
+  if (fn_copy_tmp == NULL)
+    {
+      palloc_free_page (fn_copy);
+      return TID_ERROR;
+    }
+  strlcpy (fn_copy_tmp, file_name, PGSIZE);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  char *token, *save_ptr;
+  token = strtok_r (fn_copy_tmp, " ", &save_ptr);
+  palloc_free_page (fn_copy_tmp);
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -60,7 +72,52 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  int count = 0;
+  bool in_word = false;
+  do
+    switch (*file_name)
+      {
+      case '\0':
+      case ' ':
+        if (in_word)
+          {
+            in_word = false;
+            count++;
+          }
+        break;
+      default:
+        in_word = true;
+      }
+  while (*file_name++);
+
+  uint32_t address[count];
+  char *token, *save_ptr;
+  int i = 0;
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+       token = strtok_r (NULL, " ", &save_ptr))
+    {
+      if (i == 0)
+        success = load (token, &if_.eip, &if_.esp);
+      int length = strlen(token);
+      if_.esp -= length;
+      memcpy(if_.esp, token, length);
+      address[i] = (uint32_t) if_.esp;
+      i++;
+    }
+  if_.esp -= (uint32_t) if_.esp % 4;
+  if_.esp -= 4;
+  int j;
+  for (j = count; j >= 0; j--)
+    {
+      if_.esp -= 4;
+      if_.esp = (void *) address[j];
+    }
+  if_.esp -= 4;
+  if_.esp = if_.esp + 4;
+  if_.esp -= 4;
+  if_.esp = (void *) count;
+  if_.esp -= 4;
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -89,6 +146,11 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid)
 {
+  printf("process_wait\n");
+  while (true)
+    {
+
+    }
   struct thread *t = thread_current ();
 
   if (!is_child (child_tid) || is_dead (child_tid))
