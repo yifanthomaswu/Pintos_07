@@ -87,34 +87,28 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid)
 {
-  struct thread *t = thread_current();
+  struct thread *t = thread_current ();
 
-  if (!is_child(child_tid) || is_dead(child_tid))
+  if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
 
-  sema_init(&t->waiting, 0);
-  sema_down(&t->waiting);
-  return get_exit_code(child_tid);
+  sema_init (&t->waiting, 0);
+  sema_down (&t->waiting);
+  return get_exit_code (child_tid);
 }
 
 bool
-is_child (tid_t pid)
+is_child (tid_t tid)
 {
-  struct thread *t = thread_current();
+  struct list *children = &thread_current ()->children;
   struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
-  for (e = list_begin (&t->children); e != list_end (&t->children);
-      e = list_next (e))
+  for (e = list_begin (children); e != list_end (children); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, childelem);
-      if (t->tid == pid)
-	{
-	  return true;
-	}
+      if (t->tid == tid)
+        return true;
     }
   return false;
 }

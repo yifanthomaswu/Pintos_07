@@ -109,6 +109,7 @@ void
 sema_up (struct semaphore *sema)
 {
   enum intr_level old_level;
+  struct thread *highest_p_t = NULL;
 
   ASSERT (sema != NULL);
 
@@ -116,7 +117,7 @@ sema_up (struct semaphore *sema)
   if (!list_empty (&sema->waiters))
     {
       /* Find the waiting thread with highest priority. */
-      struct thread *highest_p_t = thread_highest_priority (&sema->waiters);
+      highest_p_t = thread_highest_priority (&sema->waiters);
       /* Remove it from the waiting list. */
       list_remove (&highest_p_t->elem);
       /* Wake up the highest priority thread. */
@@ -125,7 +126,8 @@ sema_up (struct semaphore *sema)
   sema->value++;
   intr_set_level (old_level);
   /* Only yield if not in external interrupt. */
-  if (!intr_context ())
+  if (!intr_context () && !list_empty (&sema->waiters)
+      && thread_get_t_priority (highest_p_t) > thread_get_priority ())
     thread_yield ();
 }
 

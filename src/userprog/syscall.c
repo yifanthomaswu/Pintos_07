@@ -21,8 +21,9 @@ struct list statuses;
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
 
-void exit (void);
-int write (int fd, const void *buffer, unsigned size);
+static void exit (void);
+static int wait (tid_t tid);
+static int write (int fd, const void *buffer, unsigned size);
 
 void
 syscall_init (void) 
@@ -95,7 +96,7 @@ syscall_user_memory (const void *vaddr)
 //    shutdown_power_off ();
 //}
 
-void
+static void
 exit (void)
 {
   thread_exit ();
@@ -107,18 +108,18 @@ exit (void)
 //    return -1;
 //}
 
-int
+static int
 wait (tid_t tid)
 {
-  if (!is_child(tid) && is_waited_on(tid))
+  if (!is_child (tid) && is_waited_on (tid))
     return -1;
 
-  if (is_dead(tid))
-    return get_exit_code(tid);
+  if (is_dead (tid))
+    return get_exit_code (tid);
 
-  return process_wait(tid);
+  return process_wait (tid);
 }
-//
+
 //bool
 //create (const char *file, unsigned initial_size)
 //{
@@ -149,7 +150,7 @@ wait (tid_t tid)
 //    return -1;
 //}
 
-int
+static int
 write (int fd, const void *buffer, unsigned size)
 {
   if (fd == STDOUT_FILENO)
@@ -183,35 +184,28 @@ int
 get_exit_code (tid_t tid)
 {
   struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
   for (e = list_begin (&statuses); e != list_end (&statuses);
-      e = list_next (e))
+       e = list_next (e))
     {
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)
-	return e_s->status;
+        return e_s->status;
     }
-  NOT_REACHED();
+  NOT_REACHED()
 }
 
 void
 set_exit_code (tid_t tid, int status)
 {
   struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
-  for (e = list_begin (&statuses); e != list_end (&statuses);
-      e = list_next (e))
+  for (e = list_begin (&statuses); e != list_end (&statuses); e = list_next (e))
     {
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)
-	{
-	  e_s->status = status;
-	  return;
-	}
+        {
+          e_s->status = status;
+          return;
+        }
     }
 }
 
@@ -219,35 +213,29 @@ bool
 is_waited_on (tid_t tid)
 {
   struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
   for (e = list_begin (&statuses); e != list_end (&statuses);
-      e = list_next (e))
+       e = list_next (e))
     {
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)
-	return e_s->waited_on;
+        return e_s->waited_on;
     }
-  NOT_REACHED();
+  NOT_REACHED()
 }
 
 void
 set_waited_on (tid_t tid, bool waited_on)
 {
   struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
   for (e = list_begin (&statuses); e != list_end (&statuses);
-      e = list_next (e))
+       e = list_next (e))
     {
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)
-	{
-	  e_s->waited_on = waited_on;
-	  return;
-	}
+        {
+          e_s->waited_on = waited_on;
+          return;
+        }
     }
 }
 
@@ -255,20 +243,12 @@ bool
 is_dead (tid_t tid)
 {
   struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
   for (e = list_begin (&statuses); e != list_end (&statuses);
-      e = list_next (e))
+       e = list_next (e))
     {
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)
-	{
-	  return true;;
-	}
+        return true;
     }
   return false;
-
 }
-
-
