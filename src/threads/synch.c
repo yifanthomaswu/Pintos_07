@@ -106,29 +106,18 @@ sema_try_down (struct semaphore *sema)
 
    This function may be called from an interrupt handler. */
 void
-sema_up (struct semaphore *sema)
+sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
-  struct thread *highest_p_t = NULL;
 
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters))
-    {
-      /* Find the waiting thread with highest priority. */
-      highest_p_t = thread_highest_priority (&sema->waiters);
-      /* Remove it from the waiting list. */
-      list_remove (&highest_p_t->elem);
-      /* Wake up the highest priority thread. */
-      thread_unblock (highest_p_t);
-    }
+  if (!list_empty (&sema->waiters)) 
+    thread_unblock (list_entry (list_pop_front (&sema->waiters),
+                                struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
-  /* Only yield if not in external interrupt. */
-  if (!intr_context () && !list_empty (&sema->waiters)
-      && thread_get_t_priority (highest_p_t) > thread_get_priority ())
-    thread_yield ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -207,16 +196,7 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  if (!sema_try_down (&lock->semaphore))
-    {
-      struct thread *holder_thread = lock->holder;
-      /* Donate the priority of a thread trying to acquire a lock to the */
-      /* owner of the lock */
-      if (thread_get_t_priority (holder_thread) < thread_get_priority ())
-        list_push_front (&holder_thread->donors,
-                         &thread_current ()->donorelem);
-      sema_down (&lock->semaphore);
-    }
+  sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
 
@@ -251,24 +231,6 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  struct list *donors = &thread_current()->donors;
-  struct list_elem *e;
-  for (e = list_begin (donors); e != list_end (donors); e = list_next (e))
-    {
-      struct thread *t = list_entry (e, struct thread, donorelem);
-      struct list *waiters = &lock->semaphore.waiters;
-      struct list_elem *w_e;
-      for (w_e = list_begin (waiters); w_e != list_end (waiters);
-           w_e = list_next (w_e))
-        {
-          struct thread *w_t = list_entry (w_e, struct thread, elem);
-          if (t == w_t)
-            {
-              list_remove(e);
-              break;
-            }
-        }
-    }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -347,36 +309,16 @@ cond_wait (struct condition *cond, struct lock *lock)
    make sense to try to signal a condition variable within an
    interrupt handler. */
 void
-cond_signal (struct condition *cond, struct lock *lock UNUSED)
+cond_signal (struct condition *cond, struct lock *lock UNUSED) 
 {
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters))
-    {
-      struct list_elem *e;
-      int highest_priority = PRI_MIN - 1;
-      struct semaphore_elem *sema_elem = NULL;
-
-      for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters); e =
-          list_next (e))
-        {
-          struct semaphore_elem *s = list_entry (e, struct semaphore_elem,
-                                                 elem);
-          enum intr_level old_level = intr_disable ();
-          int priority = thread_highest_priority_value (&s->semaphore.waiters);
-          intr_set_level (old_level);
-          if (priority > highest_priority)
-            {
-              highest_priority = priority;
-              sema_elem = s;
-            }
-        }
-      list_remove (&sema_elem->elem);
-      sema_up (&sema_elem->semaphore);
-    }
+  if (!list_empty (&cond->waiters)) 
+    sema_up (&list_entry (list_pop_front (&cond->waiters),
+                          struct semaphore_elem, elem)->semaphore);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

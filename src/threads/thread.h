@@ -4,8 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "threads/fixed-point.h"
-#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -25,11 +23,6 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
-/* Thread nicenesses. */
-#define NICE_MIN -20                    /* Lowest niceness. */
-#define NICE_INITIAL 0                  /* Initial thread niceness. */
-#define NICE_MAX 20                     /* Highest niceness. */
 
 /* A kernel thread or user process.
 
@@ -90,40 +83,23 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                     /* Thread identifier. */
-    enum thread_status status;     /* Thread state. */
-    char name[16];                 /* Name (for debugging purposes). */
-    uint8_t *stack;                /* Saved stack pointer. */
-    int priority;                  /* Priority. */
-    struct list_elem allelem;      /* List element for all threads list. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;         /* List element. */
-
-    /* Members for implementing alarm clock. */
-    int64_t wake_ticks;            /* The timer ticks to wake up at. */
-    struct semaphore can_wake;     /* Semaphore to put thread to sleep. */
-    struct list_elem sleepelem;    /* List element for sleep threads list. */
-
-    /* Members for priority donation. */
-    struct list donors;            /* The list of the thread's donors. */
-    struct list_elem donorelem;    /* List element for donors list. */
-
-    /* Members for the BSD Scheduler. */
-    int nice;                      /* The thread's niceness. */
-    real recent_cpu;               /* CPU time the thread received recently. */
-
-    struct list children;
-    struct list_elem childelem;
-    struct semaphore waiting;
+    struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;             /* Page directory. */
+    uint32_t *pagedir;                  /* Page directory. */
 #endif
 
     /* Owned by thread.c. */
-    unsigned magic;                /* Detects stack overflow. */
+    unsigned magic;                     /* Detects stack overflow. */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -154,15 +130,11 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
-struct thread *thread_highest_priority (struct list *);
-int thread_highest_priority_value (struct list *list);
 int thread_get_priority (void);
-int thread_get_t_priority (struct thread* thread);
-void thread_set_priority (int new_priority);
+void thread_set_priority (int);
 
-/* Functions for BSD Scheduler. */
 int thread_get_nice (void);
-void thread_set_nice (int new_nice);
+void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
