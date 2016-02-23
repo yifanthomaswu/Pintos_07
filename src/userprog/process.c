@@ -109,16 +109,17 @@ start_process (void *file_name_)
   if_.esp -= (uint32_t) if_.esp % 4;
   if_.esp -= 4;
   int j;
-  for (j = count; j >= 0; j--)
+  for (j = count - 1; j >= 0; j--)
     {
       if_.esp -= 4;
-      if_.esp = (void *) address[j];
+       *((uint32_t *)if_.esp) = address[j];
     }
   if_.esp -= 4;
-  if_.esp = if_.esp + 4;
+  *((uint32_t *)if_.esp)  = (uint32_t)if_.esp + 4;
   if_.esp -= 4;
-  if_.esp = (void *) count;
+  *((uint32_t *)if_.esp)  = count;
   if_.esp -= 4;
+  hex_dump(if_.esp, if_.esp, 64,true);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);

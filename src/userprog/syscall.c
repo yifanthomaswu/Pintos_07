@@ -36,9 +36,9 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   printf("syscall_handler\n");
-  return;
-  void *sp = syscall_user_memory (f->esp);
-  switch ((int) sp)
+  uint32_t *sp = f->esp;
+  hex_dump(f->esp, f->esp, 64,true);
+  switch (*sp)
     {
 //    case SYS_HALT:                   /* Halt the operating system. */
 //        halt();
@@ -69,7 +69,7 @@ syscall_handler (struct intr_frame *f)
 //        f->eax = read ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
 //        break;
     case SYS_WRITE:                  /* Write to a file. */
-        f->eax = write ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
+        f->eax = write (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
         break;
 //    case SYS_SEEK:                   /* Change position in a file. */
 //        f->eax = seek ((int) (sp + 4), (unsigned) (sp + 8));
@@ -156,11 +156,10 @@ wait (tid_t tid)
 static int
 write (int fd, const void *buffer, unsigned size)
 {
+  printf("fd: %d\nsize: %d\n", fd, size);
   if (fd == STDOUT_FILENO)
     {
       putbuf (buffer, size);
-//      char c[3] = {'1','2','3'};
-//      putbuf (&c, 2);
       return size;
     }
   else
