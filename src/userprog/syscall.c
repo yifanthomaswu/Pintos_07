@@ -37,21 +37,20 @@ syscall_handler (struct intr_frame *f)
 {
   printf("syscall_handler\n");
   uint32_t *sp = f->esp;
-  hex_dump(f->esp, f->esp, 64,true);
   switch (*sp)
     {
 //    case SYS_HALT:                   /* Halt the operating system. */
 //        halt();
 //        break;
     case SYS_EXIT:                   /* Terminate this process. */
-        f->eax = (int) (sp + 4);
+        f->eax = *(sp + 1);
         exit ();
         break;
 //    case SYS_EXEC:                   /* Start another process. */
 //        f->eax = exec ((char) (sp + 4));
 //        break;
     case SYS_WAIT:                   /* Wait for a child process to die. */
-        f->eax = wait ((int) (sp + 4));
+        f->eax = wait (*(sp + 1));
         break;
 //    case SYS_CREATE:                 /* Create a file. */
 //        f->eax = create ((char) (sp + 4), (unsigned) (sp + 8));
@@ -156,7 +155,6 @@ wait (tid_t tid)
 static int
 write (int fd, const void *buffer, unsigned size)
 {
-  printf("fd: %d\nsize: %d\n", fd, size);
   if (fd == STDOUT_FILENO)
     {
       putbuf (buffer, size);
