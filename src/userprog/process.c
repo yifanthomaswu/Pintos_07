@@ -112,9 +112,9 @@ start_process (void *file_name_)
     {
       if (i == 0)
         success = load (token, &if_.eip, &if_.esp);
-      int length = strlen(token);
+      int length = strlen (token) + 1;
       if_.esp -= length;
-      memcpy(if_.esp, token, length);
+      memcpy (if_.esp, token, length);
       address[i] = (uint32_t) if_.esp;
       i++;
     }
@@ -124,14 +124,14 @@ start_process (void *file_name_)
   for (j = count - 1; j >= 0; j--)
     {
       if_.esp -= 4;
-       *((uint32_t *)if_.esp) = address[j];
+      *((uint32_t *) if_.esp) = address[j];
     }
   if_.esp -= 4;
-  *((uint32_t *)if_.esp)  = (uint32_t)if_.esp + 4;
+  *((uint32_t *) if_.esp) = (uint32_t) if_.esp + 4;
   if_.esp -= 4;
-  *((uint32_t *)if_.esp)  = count;
+  *((uint32_t *) if_.esp) = count;
   if_.esp -= 4;
-  hex_dump(if_.esp, if_.esp, 64,true);
+//  hex_dump(if_.esp, if_.esp, 64,true);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
