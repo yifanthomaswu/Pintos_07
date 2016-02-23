@@ -16,7 +16,15 @@ struct exitstatus
     bool waited_on;
   };
 
+struct process_sema
+{
+  struct list_elem process_sema_elem;
+  tid_t tid;
+  struct semaphore sema;
+};
+
 struct list statuses;
+struct list parents;
 
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
@@ -29,6 +37,7 @@ void
 syscall_init (void) 
 {
   list_init(&statuses);
+  list_init(&parents);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -45,7 +54,7 @@ syscall_handler (struct intr_frame *f)
 //        break;
     case SYS_EXIT:                   /* Terminate this process. */
         f->eax = (int) (sp + 4);
-        exit ();
+        exit ((int) (sp + 4));
         break;
 //    case SYS_EXEC:                   /* Start another process. */
 //        f->eax = exec ((char) (sp + 4));
@@ -99,8 +108,10 @@ syscall_user_memory (const void *vaddr)
 //}
 
 static void
-exit (void)
+exit (int status)
 {
+  add_process(thread_current()->tid, status);
+  sema_up(get_parent_sema(thread_current()->parent_tid));
   process_exit ();
   thread_exit ();
 }
@@ -183,6 +194,49 @@ write (int fd, const void *buffer, unsigned size)
 //{
 //    return;
 //}
+
+void
+add_process (tid_t tid, int status)
+{
+  struct exitstatus *new_process = malloc(sizeof(struct exitstatus));
+  new_process->tid = tid;
+  new_process->waited_on = false;
+  new_process->status = status;
+  list_push_front(&statuses, &new_process->statuselem);
+}
+
+struct semaphore*
+add_parent (tid_t tid)
+{
+  struct list_elem *e;
+  for (e = list_begin (&parents); e != list_end (&parents);
+      e = list_next (e))
+    {
+      struct process_sema *p_s = list_entry (e, struct process_sema, process_sema_elem);
+      if (p_s->tid == tid)
+	return &p_s->sema;
+    }
+
+  struct process_sema *new_parent = malloc(sizeof(struct process_sema));
+  new_parent->tid = tid;
+  sema_init(&new_parent->sema, 0);
+  list_push_front(&parents, &new_parent->process_sema_elem);
+  return &new_parent->sema;
+}
+
+struct semaphore*
+get_parent_semaphore (tid_t parent_tid)
+{
+  struct list_elem *e;
+  for (e = list_begin (&parents); e != list_end (&parents);
+      e = list_next (e))
+    {
+      struct process_sema *p_s = list_entry (e, struct process_sema, process_sema_elem);
+      if (p_s->tid == parent_tid)
+	return &p_s->sema;
+    }
+  NOT_REACHED()
+}
 
 int
 get_exit_code (tid_t tid)

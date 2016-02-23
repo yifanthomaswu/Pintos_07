@@ -1,6 +1,7 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include "userprog/syscall.h"
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -22,7 +23,8 @@ static void page_fault (struct intr_frame *);
 
    Page faults are an exception.  Here they are treated the same
    way as other exceptions, but this will need to change to
-   implement virtual memory.
+   implement virtual memory.#include "userprog/syscall.h"
+
 
    Refer to [IA32-v3a] section 5.15 "Exception and Interrupt
    Reference" for a description of each of these exceptions. */
@@ -81,6 +83,8 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
+  add_process(thread_current()->tid, KILLED_EXIT_CODE);
+  sema_up(get_parent_sema(thread_current()->parent_tid));
   switch (f->cs)
     {
     case SEL_UCSEG:
