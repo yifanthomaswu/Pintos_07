@@ -205,6 +205,7 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   t->parent_tid = thread_current()->tid;
+  list_push_front(&thread_current()->children, &t->childelem);
 
   intr_set_level (old_level);
 

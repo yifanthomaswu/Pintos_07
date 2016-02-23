@@ -22,12 +22,6 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
-struct p_tid
-{
-  tid_t tid;
-  struct list_elem p_tid_elem;
-};
-
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -35,7 +29,6 @@ struct p_tid
 tid_t
 process_execute (const char *file_name) 
 {
-  printf("process_execute\n");
   char *fn_copy, *fn_copy_tmp;
   tid_t tid;
 
@@ -57,15 +50,10 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   char *token, *save_ptr;
   token = strtok_r (fn_copy_tmp, " ", &save_ptr);
-  palloc_free_page (fn_copy_tmp);
-  struct thread *t = thread_current();
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  palloc_free_page (fn_copy_tmp);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  struct p_tid *new_p_tid = malloc(sizeof(struct p_tid));
-  new_p_tid->tid = tid;
-  list_push_front(&t->children, new_p_tid->p_tid_elem);
-
   return tid;
 }
 
@@ -160,20 +148,13 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid)
 {
-  printf("process_wait\n");
-//  while (true)
-//    {
-//
-//    }
   struct thread *t = thread_current ();
 
   if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
 
-//  set_waited_on(child_tid, true); //suucess
-
-  sema_down(add_process(child_tid));
-
+  sema_down(add_parent(thread_current()->tid));
+  set_waited_on(child_tid);
   return get_exit_code (child_tid);
 }
 

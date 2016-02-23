@@ -101,6 +101,7 @@ struct thread
     struct list_elem sleepelem;    /* List element for sleep threads list. */
 
     struct list children;
+    struct list_elem childelem;
     tid_t parent_tid;
 
 #ifdef USERPROG

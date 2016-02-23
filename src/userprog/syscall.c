@@ -44,7 +44,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  printf("syscall_handler\n");
   uint32_t *sp = f->esp;
   switch (*sp)
     {
@@ -110,7 +109,8 @@ static void
 exit (int status)
 {
   add_process(thread_current()->tid, status);
-  sema_up(get_parent_sema(thread_current()->parent_tid));
+  sema_up(get_parent_semaphore(thread_current()->parent_tid));
+  printf ("%s: exit(%d)\n", thread_current()->name, status);
   process_exit ();
   thread_exit ();
 }
@@ -124,12 +124,14 @@ exit (int status)
 static int
 wait (tid_t tid)
 {
-  if (!is_child (tid) && is_waited_on (tid))
+  if (!is_child (tid) || is_waited_on (tid))
     return -1;
 
   if (is_dead (tid))
-    return get_exit_code (tid);
-
+    {
+      set_waited_on(tid);
+      return get_exit_code (tid);
+    }
   return process_wait (tid);
 }
 
@@ -280,7 +282,7 @@ is_waited_on (tid_t tid)
 }
 
 void
-set_waited_on (tid_t tid, bool waited_on)
+set_waited_on (tid_t tid)
 {
   struct list_elem *e;
   for (e = list_begin (&statuses); e != list_end (&statuses);
@@ -289,7 +291,7 @@ set_waited_on (tid_t tid, bool waited_on)
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)
         {
-          e_s->waited_on = waited_on;
+          e_s->waited_on = true;
           return;
         }
     }
