@@ -312,12 +312,16 @@ seek (int fd, unsigned position)
     }
 }
 
-//unsigned
-//tell (int fd)
-//{
-//    return -1;
-//}
-//
+unsigned
+tell (int fd)
+{
+	struct file_fd *file_fd = get_file_fd (fd);
+	lock_acquire (&file_lock);
+	unsigned u = file_tell(file_fd);
+	lock_release(&file_lock);
+    return u;
+}
+
 //void
 //close (int fd)
 //{
