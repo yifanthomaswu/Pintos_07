@@ -50,6 +50,9 @@ static int read (int fd, void *buffer, unsigned size);
 tid_t exec (const char *cmd_line);
 static int write (int fd, const void *buffer, unsigned size);
 static bool create(const char *file, unsigned initial_size);
+static void seek (int fd, unsigned position);
+static unsigned tell (int fd);
+static void close (int fd);
 
 void
 syscall_init (void) 
@@ -98,15 +101,15 @@ syscall_handler (struct intr_frame *f)
     case SYS_WRITE:                  /* Write to a file. */
         f->eax = write (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
         break;
-//    case SYS_SEEK:                   /* Change position in a file. */
-//        f->eax = seek ((int) (sp + 4), (unsigned) (sp + 8));
-//        break;
-//    case SYS_TELL:                   /* Report current position in a file. */
-//        f->eax = tell ((int) (sp + 4));
-//        break;
-//    case SYS_CLOSE:                  /* Close a file. */
-//        f->eax = close ((int) (sp + 4));
-//        break;
+    case SYS_SEEK:                   /* Change position in a file. */
+        f->eax = seek (*(sp + 1), (unsigned) *(sp + 2));
+        break;
+    case SYS_TELL:                   /* Report current position in a file. */
+        f->eax = tell (*(sp + 1));
+        break;
+    case SYS_CLOSE:                  /* Close a file. */
+        f->eax = close (*(sp + 1));
+        break;
     }
 }
 
@@ -300,7 +303,7 @@ write (int fd, const void *buffer, unsigned size)
     }
 }
 
-void
+static void
 seek (int fd, unsigned position)
 {
   struct file_fd *file_fd = get_file_fd (fd);
@@ -312,7 +315,7 @@ seek (int fd, unsigned position)
     }
 }
 
-unsigned
+static unsigned
 tell (int fd)
 {
 	struct file_fd *file_fd = get_file_fd (fd);
@@ -322,11 +325,15 @@ tell (int fd)
     return u;
 }
 
-//void
-//close (int fd)
-//{
-//    return;
-//}
+static void
+close (int fd)
+{
+  struct file_fd *file_fd = get_file_fd (fd);
+  if (file_fd == NULL)
+    return;
+  else
+    file_close(file_fd->file);
+}
 
 void
 add_process (tid_t tid, int status)

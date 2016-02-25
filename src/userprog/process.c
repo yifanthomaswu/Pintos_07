@@ -188,6 +188,7 @@ process_exit (void)
     {
       struct list_elem *e = list_pop_front (&cur->files);
       struct file_fd *f = list_entry (e, struct file_fd, filefdelem);
+      file_close(f->file);
       free (f->file_name);
       free (f);
     }
