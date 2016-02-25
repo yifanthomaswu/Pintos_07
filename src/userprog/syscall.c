@@ -37,7 +37,7 @@ static struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
-
+static int get_new_fd(void);
 static struct file_fd *get_file_fd (int fd);
 
 static void halt (void);
@@ -119,7 +119,7 @@ syscall_user_memory (const void *vaddr)
     return NULL;
 }
 
-int
+static int
 get_new_fd(void)
 {
   return fd++;
@@ -153,7 +153,6 @@ exit (int status)
   add_process(thread_current()->tid, status);
   sema_up(get_parent_semaphore(thread_current()->parent_tid));
   printf ("%s: exit(%d)\n", thread_current()->name, status);
-  process_exit ();
   thread_exit ();
 }
 
@@ -207,9 +206,16 @@ open (const char *file)
   else
     {
       struct file_fd *file_fd = malloc (sizeof(struct file_fd));
+      if (file_fd == NULL)
+        return -1;
       file_fd->fd = get_new_fd ();
       int length = strlen (file) + 1;
       file_fd->file_name = malloc (length * sizeof(char));
+      if (file_fd->file_name == NULL)
+        {
+          free (file_fd);
+          return -1;
+        }
       memcpy (file_fd->file_name, file, length);
       file_fd->file = current_file;
       list_push_front (&thread_current ()->files, &file_fd->filefdelem);
@@ -315,42 +321,63 @@ write (int fd, const void *buffer, unsigned size)
 void
 add_process (tid_t tid, int status)
 {
-  struct exitstatus *new_process = malloc(sizeof(struct exitstatus));
+  struct exitstatus *new_process = malloc (sizeof(struct exitstatus));
+  if (new_process == NULL)
+    thread_exit ();
   new_process->tid = tid;
   new_process->waited_on = false;
   new_process->status = status;
-  list_push_front(&statuses, &new_process->statuselem);
+  list_push_front (&statuses, &new_process->statuselem);
 }
 
 struct semaphore*
 add_parent (tid_t tid)
 {
   struct list_elem *e;
-  for (e = list_begin (&parents); e != list_end (&parents);
-      e = list_next (e))
+  for (e = list_begin (&parents); e != list_end (&parents); e = list_next (e))
     {
-      struct process_sema *p_s = list_entry (e, struct process_sema, process_sema_elem);
+      struct process_sema *p_s = list_entry (e, struct process_sema,
+                                             process_sema_elem);
       if (p_s->tid == tid)
-	return &p_s->sema;
+        return &p_s->sema;
     }
 
-  struct process_sema *new_parent = malloc(sizeof(struct process_sema));
+  struct process_sema *new_parent = malloc (sizeof(struct process_sema));
+  if (new_parent == NULL)
+    thread_exit ();
   new_parent->tid = tid;
-  sema_init(&new_parent->sema, 0);
-  list_push_front(&parents, &new_parent->process_sema_elem);
+  sema_init (&new_parent->sema, 0);
+  list_push_front (&parents, &new_parent->process_sema_elem);
   return &new_parent->sema;
+}
+
+void
+remove_parent (tid_t tid)
+{
+  struct list_elem *e;
+  for (e = list_begin (&parents); e != list_end (&parents); e = list_next (e))
+    {
+      struct process_sema *p_s = list_entry (e, struct process_sema,
+                                             process_sema_elem);
+      if (p_s->tid == tid)
+        break;
+    }
+  struct process_sema *p_s = list_entry (e, struct process_sema,
+                                         process_sema_elem);
+  list_remove(e);
+  free(p_s);
 }
 
 struct semaphore*
 get_parent_semaphore (tid_t parent_tid)
 {
   struct list_elem *e;
-  for (e = list_begin (&parents); e != list_end (&parents);
-      e = list_next (e))
+  for (e = list_begin (&parents); e != list_end (&parents); e = list_next (e))
     {
-      struct process_sema *p_s = list_entry (e, struct process_sema, process_sema_elem);
+      struct process_sema *p_s = list_entry (e, struct process_sema,
+                                             process_sema_elem);
       if (p_s->tid == parent_tid)
-	return &p_s->sema;
+        return &p_s->sema;
     }
   NOT_REACHED()
 }
@@ -373,7 +400,8 @@ void
 set_exit_code (tid_t tid, int status)
 {
   struct list_elem *e;
-  for (e = list_begin (&statuses); e != list_end (&statuses); e = list_next (e))
+  for (e = list_begin (&statuses); e != list_end (&statuses);
+       e = list_next (e))
     {
       struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
       if (e_s->tid == tid)

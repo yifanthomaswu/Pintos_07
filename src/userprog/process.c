@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -148,8 +149,6 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid)
 {
-  struct thread *t = thread_current ();
-
   if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
 
@@ -165,7 +164,7 @@ is_child (tid_t tid)
   struct list_elem *e;
   for (e = list_begin (children); e != list_end (children); e = list_next (e))
     {
-      struct thread *t = list_entry (e, struct thread, childelem);
+      struct child_tid *t = list_entry (e, struct child_tid, childtidelem);
       if (t->tid == tid)
         return true;
     }
@@ -178,6 +177,21 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  while (!list_empty (&cur->children))
+    {
+      struct list_elem *e = list_pop_front (&cur->children);
+      struct child_tid *c = list_entry (e, struct child_tid, childtidelem);
+      free (c);
+    }
+  while (!list_empty (&cur->files))
+    {
+      struct list_elem *e = list_pop_front (&cur->files);
+      struct file_fd *f = list_entry (e, struct file_fd, filefdelem);
+      free (f->file_name);
+      free (f);
+    }
+  remove_parent(cur->tid);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

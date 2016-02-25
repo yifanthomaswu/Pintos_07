@@ -7,6 +7,7 @@
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
@@ -205,7 +206,15 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   t->parent_tid = thread_current()->tid;
-  list_push_front(&thread_current()->children, &t->childelem);
+  struct child_tid *child = malloc(sizeof(struct child_tid));
+  if (child == NULL)
+    {
+      palloc_free_page(t);
+      intr_set_level (old_level);
+      return TID_ERROR;
+    }
+  child->tid = t->tid;
+  list_push_front(&thread_current()->children, &child->childtidelem);
 
   intr_set_level (old_level);
 

@@ -9,6 +9,7 @@
 void syscall_init (void);
 void add_process (tid_t tid, int status);
 struct semaphore* add_parent (tid_t tid);
+void remove_parent (tid_t tid);
 struct semaphore* get_parent_semaphore (tid_t parent_tid);
 int get_exit_code (tid_t tid);
 void set_exit_code (tid_t tid, int status);

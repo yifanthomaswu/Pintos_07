@@ -25,6 +25,12 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+struct child_tid
+  {
+    tid_t tid;
+    struct list_elem childtidelem;
+  };
+
 struct file_fd
 {
   int fd;
@@ -109,7 +115,6 @@ struct thread
     struct list_elem sleepelem;    /* List element for sleep threads list. */
 
     struct list children;
-    struct list_elem childelem;
     tid_t parent_tid;
 
     struct list files;
