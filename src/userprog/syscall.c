@@ -362,10 +362,13 @@ remove_parent (tid_t tid)
       if (p_s->tid == tid)
         break;
     }
-  struct process_sema *p_s = list_entry (e, struct process_sema,
-                                         process_sema_elem);
-  list_remove(e);
-  free(p_s);
+  if (e != list_end (&parents))
+    {
+      struct process_sema *p_s = list_entry (e, struct process_sema,
+                                             process_sema_elem);
+      list_remove (e);
+      free (p_s);
+    }
 }
 
 struct semaphore*
