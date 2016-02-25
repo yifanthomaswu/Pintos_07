@@ -32,6 +32,7 @@ static void *syscall_user_memory (const void *vaddr);
 static void exit (int status);
 static int wait (tid_t tid);
 static int write (int fd, const void *buffer, unsigned size);
+static bool create(const char *file, unsigned initial_size);
 
 void
 syscall_init (void) 
@@ -47,9 +48,9 @@ syscall_handler (struct intr_frame *f)
   uint32_t *sp = f->esp;
   switch (*sp)
     {
-//    case SYS_HALT:                   /* Halt the operating system. */
-//        halt();
-//        break;
+    case SYS_HALT:                   /* Halt the operating system. */
+        halt();
+        break;
     case SYS_EXIT:                   /* Terminate this process. */
         f->eax = *(sp + 1);
         exit (*(sp + 1));
@@ -60,9 +61,9 @@ syscall_handler (struct intr_frame *f)
     case SYS_WAIT:                   /* Wait for a child process to die. */
         f->eax = wait (*(sp + 1));
         break;
-//    case SYS_CREATE:                 /* Create a file. */
-//        f->eax = create ((char) (sp + 4), (unsigned) (sp + 8));
-//        break;
+    case SYS_CREATE:                 /* Create a file. */
+        f->eax = create ((char *) *(sp + 1), (unsigned) *(sp + 2));
+        break;
 //    case SYS_REMOVE:                 /* Delete a file. */
 //        f->eax = remove ((char) (sp + 4));
 //        break;
@@ -99,11 +100,11 @@ syscall_user_memory (const void *vaddr)
     return NULL;
 }
 
-//void
-//halt (void)
-//{
-//    shutdown_power_off ();
-//}
+void
+halt (void)
+{
+    shutdown_power_off ();
+}
 
 static void
 exit (int status)
@@ -135,12 +136,18 @@ wait (tid_t tid)
   return process_wait (tid);
 }
 
-//bool
-//create (const char *file, unsigned initial_size)
-//{
-//    return false;
-//}
-//
+static bool
+create (const char *file, unsigned initial_size)
+{
+//    REMOVE THE COMMENTING IF EMPTY FILENAMES SHOULD GET REJECTED
+//    if(strcmp(file, "") == 0)
+//    {
+//        set_exit_code(thread_current()->tid, -1);
+//        return 0;
+//    }
+    return filesys_create(file, initial_size);
+}
+
 //bool
 //remove (const char *file)
 //{
