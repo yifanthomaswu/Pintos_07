@@ -28,7 +28,8 @@ typedef int tid_t;
 struct file_fd
 {
   int fd;
-  const char *file;
+  char *file_name;
+  struct file *file;
   struct list_elem filefdelem;
 };
 
@@ -112,7 +113,6 @@ struct thread
     tid_t parent_tid;
 
     struct list files;
-
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

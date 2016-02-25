@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -8,6 +9,10 @@
 #include "devices/shutdown.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
+#include "threads/synch.h"
+#include "threads/malloc.h"
+#include "filesys/file.h"
+#include "devices/input.h"
 
 struct exitstatus
   {
@@ -28,13 +33,14 @@ struct list statuses;
 struct list parents;
 
 static int fd;
-static struct lock *file_lock;
+static struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
 
+static struct file_fd *get_file_fd (int fd);
 
-static void halt ();
+static void halt (void);
 static void exit (int status);
 static int wait (tid_t tid);
 static bool remove (const char *file);
@@ -69,7 +75,7 @@ syscall_handler (struct intr_frame *f)
         exit (*(sp + 1));
         break;
     case SYS_EXEC:                   /* Start another process. */
-        f->eax = exec ((char) (sp + 4));
+        f->eax = exec ((char *) *(sp + 1));
         break;
     case SYS_WAIT:                   /* Wait for a child process to die. */
         f->eax = wait (*(sp + 1));
@@ -87,7 +93,7 @@ syscall_handler (struct intr_frame *f)
         f->eax = filesize ((int) *(sp + 1));
         break;
     case SYS_READ:                   /* Read from a file. */
-        f->eax = read ((int) *(sp + 1), (void *) *(sp + 2), (unsigned) *(sp + 3));
+        f->eax = read (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
         break;
     case SYS_WRITE:                  /* Write to a file. */
         f->eax = write (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
@@ -119,6 +125,20 @@ get_new_fd(void)
   return fd++;
 }
 
+static struct file_fd *
+get_file_fd (int fd)
+{
+  struct thread *t = thread_current();
+  struct list_elem *e;
+  for (e = list_begin (&t->files); e != list_end (&t->files);
+       e = list_next (e))
+    {
+      struct file_fd *f = list_entry (e, struct file_fd, filefdelem);
+      if (f->fd == fd)
+        return f;
+    }
+  return NULL;
+}
 
 static void
 halt (void)
@@ -179,21 +199,20 @@ remove (const char *file)
 static int
 open (const char *file)
 {
-  lock_aquire(&file_lock);
-  if (filesys_open (file) == NULL)
-    {
-      lock_release(&file_lock);
-      return -1;
-    }
+  lock_acquire (&file_lock);
+  struct file *current_file = filesys_open (file);
+  lock_release (&file_lock);
+  if (current_file == NULL)
+    return -1;
   else
     {
-      lock_release(&file_lock);
-      struct file_fd *file_fd = malloc(sizeof(struct file_fd));
-      file_fd->fd = get_new_fd();
-      int length = length(file) + 1;
-      file_fd->file = malloc(length * sizeof(char));
-      memcpy(file_fd->file, file, length);
-      list_push_front(&thread_current()->files, file_fd->filefdelem);
+      struct file_fd *file_fd = malloc (sizeof(struct file_fd));
+      file_fd->fd = get_new_fd ();
+      int length = strlen (file) + 1;
+      file_fd->file_name = malloc (length * sizeof(char));
+      memcpy (file_fd->file_name, file, length);
+      file_fd->file = current_file;
+      list_push_front (&thread_current ()->files, &file_fd->filefdelem);
       return file_fd->fd;
     }
 }
@@ -201,13 +220,54 @@ open (const char *file)
 static int
 filesize (int fd)
 {
-    return -1;
+  if (fd == STDIN_FILENO || fd == STDOUT_FILENO)
+    return 0;
+  else
+    {
+      struct file_fd *file_fd = get_file_fd (fd);
+      if (file_fd == NULL)
+        return 0;
+      else
+        {
+          lock_acquire (&file_lock);
+          int s = file_length(file_fd->file);
+          lock_release (&file_lock);
+          return s;
+        }
+    }
 }
 
 static int
 read (int fd, void *buffer, unsigned size)
 {
+  if (fd == STDIN_FILENO)
+    {
+      uint8_t *char_buffer = buffer;
+      int i;
+      for (i = 0; i < (int) size; i++)
+        {
+          *char_buffer = input_getc ();
+          char_buffer++;
+        }
+      *char_buffer = '\0';
+      return size;
+    }
+  else if (fd == STDOUT_FILENO)
     return -1;
+  else
+    {
+      struct file_fd *file_fd = get_file_fd (fd);
+      if (file_fd == NULL)
+        return -1;
+      else
+        {
+          lock_acquire (&file_lock);
+          int s = file_read (file_fd->file, buffer, size);
+          ((uint8_t *) buffer)[s] = '\0'; // TODO:check
+          lock_release (&file_lock);
+          return s;
+        }
+    }
 }
 
 static int
@@ -218,8 +278,21 @@ write (int fd, const void *buffer, unsigned size)
       putbuf (buffer, size);
       return size;
     }
-  else
+  else if (fd == STDIN_FILENO)
     return 0;
+  else
+    {
+      struct file_fd *file_fd = get_file_fd (fd);
+      if (file_fd == NULL)
+        return 0;
+      else
+        {
+          lock_acquire (&file_lock);
+          int s = file_write (file_fd->file, buffer, size);
+          lock_release (&file_lock);
+          return s;
+        }
+    }
 }
 //
 //void
