@@ -263,7 +263,6 @@ read (int fd, void *buffer, unsigned size)
         {
           lock_acquire (&file_lock);
           int s = file_read (file_fd->file, buffer, size);
-          ((uint8_t *) buffer)[s] = '\0'; // TODO:check
           lock_release (&file_lock);
           return s;
         }
