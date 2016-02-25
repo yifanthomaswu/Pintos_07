@@ -186,7 +186,7 @@ thread_create (const char *name, int priority,
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
-     member cannot be observed. */
+     member cannot be observefile_fdd. */
   old_level = intr_disable ();
 
   /* Stack frame for kernel_thread(). */
@@ -474,6 +474,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   list_init (&t->children);
+  list_init (&t->files);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

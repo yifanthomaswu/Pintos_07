@@ -102,6 +102,7 @@ start_process (void *file_name_)
         success = load (token, &if_.eip, &if_.esp);
       int length = strlen (token) + 1;
       if_.esp -= length;
+      printf("%d", i);
       memcpy (if_.esp, token, length);
       address[i] = (uint32_t) if_.esp;
       i++;

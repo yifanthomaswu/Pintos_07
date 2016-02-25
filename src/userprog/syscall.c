@@ -27,8 +27,12 @@ struct process_sema
 struct list statuses;
 struct list parents;
 
+static int fd;
+static struct lock *file_lock;
+
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
+
 
 static void halt ();
 static void exit (int status);
@@ -37,6 +41,7 @@ static bool remove (const char *file);
 static int open (const char *file);
 static int filesize (int fd);
 static int read (int fd, void *buffer, unsigned size);
+tid_t exec (const char *cmd_line);
 static int write (int fd, const void *buffer, unsigned size);
 static bool create(const char *file, unsigned initial_size);
 
@@ -45,6 +50,8 @@ syscall_init (void)
 {
   list_init(&statuses);
   list_init(&parents);
+  fd = 2;
+  lock_init(&file_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -61,9 +68,9 @@ syscall_handler (struct intr_frame *f)
         f->eax = *(sp + 1);
         exit (*(sp + 1));
         break;
-//    case SYS_EXEC:                   /* Start another process. */
-//        f->eax = exec ((char) (sp + 4));
-//        break;
+    case SYS_EXEC:                   /* Start another process. */
+        f->eax = exec ((char) (sp + 4));
+        break;
     case SYS_WAIT:                   /* Wait for a child process to die. */
         f->eax = wait (*(sp + 1));
         break;
@@ -106,10 +113,18 @@ syscall_user_memory (const void *vaddr)
     return NULL;
 }
 
+int
+get_new_fd(void)
+{
+  return fd++;
+}
+
+
 static void
 halt (void)
 {
     shutdown_power_off ();
+    NOT_REACHED();
 }
 
 static void
@@ -122,11 +137,13 @@ exit (int status)
   thread_exit ();
 }
 
-//tid_t
-//exec (const char *cmd_line)
-//{
-//    return -1;
-//}
+tid_t
+exec (const char *cmd_line)
+{
+
+  tid_t new_proc_tid = process_execute(cmd_line);
+  return new_proc_tid;
+}
 
 static int
 wait (tid_t tid)
@@ -162,7 +179,23 @@ remove (const char *file)
 static int
 open (const char *file)
 {
-    return -1;
+  lock_aquire(&file_lock);
+  if (filesys_open (file) == NULL)
+    {
+      lock_release(&file_lock);
+      return -1;
+    }
+  else
+    {
+      lock_release(&file_lock);
+      struct file_fd *file_fd = malloc(sizeof(struct file_fd));
+      file_fd->fd = get_new_fd();
+      int length = length(file) + 1;
+      file_fd->file = malloc(length * sizeof(char));
+      memcpy(file_fd->file, file, length);
+      list_push_front(&thread_current()->files, file_fd->filefdelem);
+      return file_fd->fd;
+    }
 }
 
 static int
@@ -290,6 +323,7 @@ is_waited_on (tid_t tid)
       if (e_s->tid == tid)
         return e_s->waited_on;
     }
+  return false;
   NOT_REACHED()
 }
 
