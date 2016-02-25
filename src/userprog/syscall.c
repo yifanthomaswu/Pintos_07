@@ -299,13 +299,19 @@ write (int fd, const void *buffer, unsigned size)
         }
     }
 }
-//
-//void
-//seek (int fd, unsigned position)
-//{
-//    return;
-//}
-//
+
+void
+seek (int fd, unsigned position)
+{
+  struct file_fd *file_fd = get_file_fd (fd);
+  if (file_fd)
+    {
+      lock_acquire (&file_lock);
+      file_seek (file_fd->file, (int32_t) position);
+      lock_release (&file_lock);
+    }
+}
+
 //unsigned
 //tell (int fd)
 //{
