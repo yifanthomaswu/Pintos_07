@@ -102,13 +102,13 @@ syscall_handler (struct intr_frame *f)
         f->eax = write (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
         break;
     case SYS_SEEK:                   /* Change position in a file. */
-        f->eax = seek (*(sp + 1), (unsigned) *(sp + 2));
+        seek (*(sp + 1), (unsigned) *(sp + 2));
         break;
     case SYS_TELL:                   /* Report current position in a file. */
         f->eax = tell (*(sp + 1));
         break;
     case SYS_CLOSE:                  /* Close a file. */
-        f->eax = close (*(sp + 1));
+        close (*(sp + 1));
         break;
     }
 }
