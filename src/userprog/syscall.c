@@ -7,6 +7,7 @@
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
 #include "userprog/process.h"
+#include "filesys/filesys.h"
 
 struct exitstatus
   {
@@ -29,8 +30,13 @@ struct list parents;
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
 
+static void halt ();
 static void exit (int status);
 static int wait (tid_t tid);
+static bool remove (const char *file);
+static int open (const char *file);
+static int filesize (int fd);
+static int read (int fd, void *buffer, unsigned size);
 static int write (int fd, const void *buffer, unsigned size);
 static bool create(const char *file, unsigned initial_size);
 
@@ -64,18 +70,18 @@ syscall_handler (struct intr_frame *f)
     case SYS_CREATE:                 /* Create a file. */
         f->eax = create ((char *) *(sp + 1), (unsigned) *(sp + 2));
         break;
-//    case SYS_REMOVE:                 /* Delete a file. */
-//        f->eax = remove ((char) (sp + 4));
-//        break;
-//    case SYS_OPEN:                   /* Open a file. */
-//        f->eax = open ((char) (sp + 4));
-//        break;
-//    case SYS_FILESIZE:               /* Obtain a file's size. */
-//        f->eax = filesize ((int) (sp + 4));
-//        break;
-//    case SYS_READ:                   /* Read from a file. */
-//        f->eax = read ((int) (sp + 4), sp + 8, (unsigned) (sp + 12));
-//        break;
+    case SYS_REMOVE:                 /* Delete a file. */
+        f->eax = remove ((char *) *(sp + 1));
+        break;
+    case SYS_OPEN:                   /* Open a file. */
+        f->eax = open ((char *) *(sp + 1));
+        break;
+    case SYS_FILESIZE:               /* Obtain a file's size. */
+        f->eax = filesize ((int) *(sp + 1));
+        break;
+    case SYS_READ:                   /* Read from a file. */
+        f->eax = read ((int) *(sp + 1), (void *) *(sp + 2), (unsigned) *(sp + 3));
+        break;
     case SYS_WRITE:                  /* Write to a file. */
         f->eax = write (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
         break;
@@ -100,7 +106,7 @@ syscall_user_memory (const void *vaddr)
     return NULL;
 }
 
-void
+static void
 halt (void)
 {
     shutdown_power_off ();
@@ -139,38 +145,37 @@ wait (tid_t tid)
 static bool
 create (const char *file, unsigned initial_size)
 {
-//    REMOVE THE COMMENTING IF EMPTY FILENAMES SHOULD GET REJECTED
-//    if(strcmp(file, "") == 0)
-//    {
-//        set_exit_code(thread_current()->tid, -1);
-//        return 0;
-//    }
+    if(file == NULL || strcmp(file, "") == 0)
+    {
+        exit(-1);
+        return 0;
+    }
     return filesys_create(file, initial_size);
 }
 
-//bool
-//remove (const char *file)
-//{
-//    return false;
-//}
-//
-//int
-//open (const char *file)
-//{
-//    return -1;
-//}
-//
-//int
-//filesize (int fd)
-//{
-//    return -1;
-//}
-//
-//int
-//read (int fd, void *buffer, unsigned size)
-//{
-//    return -1;
-//}
+static bool
+remove (const char *file)
+{
+    return filesys_remove(file);
+}
+
+static int
+open (const char *file)
+{
+    return -1;
+}
+
+static int
+filesize (int fd)
+{
+    return -1;
+}
+
+static int
+read (int fd, void *buffer, unsigned size)
+{
+    return -1;
+}
 
 static int
 write (int fd, const void *buffer, unsigned size)
