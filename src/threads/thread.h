@@ -25,12 +25,14 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* Struct for holding the tids of a processes children */
 struct child_tid
   {
     tid_t tid;
     struct list_elem childtidelem;
   };
 
+/* Struct used to keep track of open files to their fds */
 struct file_fd
 {
   int fd;
@@ -114,9 +116,11 @@ struct thread
     struct semaphore can_wake;     /* Semaphore to put thread to sleep. */
     struct list_elem sleepelem;    /* List element for sleep threads list. */
 
-    struct list children;
-    tid_t parent_tid;
+    /* Members for User Programs. */
+    struct list children;	   /* List of children of a process */
+    tid_t parent_tid;		   /* The tid of the parent of the process */
 
+    /* List of struct file_fd to track open files*/
     struct list files;
 
 #ifdef USERPROG

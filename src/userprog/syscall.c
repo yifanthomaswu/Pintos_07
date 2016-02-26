@@ -14,14 +14,17 @@
 #include "filesys/file.h"
 #include "devices/input.h"
 
+/* Struct used to keep the history of dead processes and their exit codes. */
 struct exitstatus
   {
     struct list_elem statuselem;
     tid_t tid;
     int status;
+    /* A process can be waited on only once. */
     bool waited_on;
   };
 
+/* Struct used to map a process tid to the semaphore it uses to wait on process. */
 struct process_sema
 {
   struct list_elem process_sema_elem;
@@ -29,10 +32,15 @@ struct process_sema
   struct semaphore sema;
 };
 
+/* History of dead processes. */
 struct list statuses;
+/* List of waiting processes on their children to die. */
 struct list parents;
 
+/* The current free file descriptor available to a process. */
+/* Accessible through the get_new_fd() function. */
 static int fd;
+/* Lock used to synchronise any access to the file system. */
 static struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
@@ -57,10 +65,14 @@ static void close (int fd);
 void
 syscall_init (void) 
 {
+  /* Initialise the used lists. */
   list_init(&statuses);
   list_init(&parents);
+  /* Initialise the next available fd to 2; 0 and 1 reserved for STD[IN/OUT]. */
   fd = 2;
+  /* Initialise the file system lock. */
   lock_init(&file_lock);
+  /* Register the system call handler on 0x30. */
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -122,12 +134,15 @@ syscall_user_memory (const void *vaddr)
     return NULL;
 }
 
+/* Returns and then increments the next available file descriptor. */
 static int
 get_new_fd(void)
 {
   return fd++;
 }
 
+/* Returns file pointer to the file referenced by fd. */
+/* If no file is open through fd, returns NULL. */
 static struct file_fd *
 get_file_fd (int fd)
 {
@@ -153,6 +168,7 @@ halt (void)
 static void
 exit (int status)
 {
+  /* Add the about-to-die process to the history list of exit statuses. */
   add_process(thread_current()->tid, status);
   sema_up(get_parent_semaphore(thread_current()->parent_tid));
   printf ("%s: exit(%d)\n", thread_current()->name, status);
