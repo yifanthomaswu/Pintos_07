@@ -106,8 +106,11 @@ start_process (void *file_name_)
           success = load (token, &if_.eip, &if_.esp);
           struct process_sema *p_s = get_process_sema (
               thread_current ()->parent_tid);
-          p_s->load_fail = !success;
-          sema_up (&p_s->sema_exec);
+          if (p_s != NULL)
+            {
+              p_s->load_fail = !success;
+              sema_up (&p_s->sema_exec);
+            }
           if (!success)
             {
               palloc_free_page (file_name);

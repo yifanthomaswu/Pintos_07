@@ -442,7 +442,7 @@ get_process_sema (tid_t tid)
       if (p_s->tid == tid)
         return p_s;
     }
-  NOT_REACHED()
+  return NULL;
 }
 
 int
