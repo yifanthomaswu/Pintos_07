@@ -178,7 +178,7 @@ exit (int status)
 tid_t
 exec (const char *cmd_line)
 {
-
+  // TODO
   tid_t new_proc_tid = process_execute(cmd_line);
   return new_proc_tid;
 }
@@ -191,7 +191,7 @@ wait (tid_t tid)
 
   if (is_dead (tid))
     {
-      set_waited_on(tid);
+      set_waited_on (tid);
       return get_exit_code (tid);
     }
   return process_wait (tid);
@@ -200,18 +200,19 @@ wait (tid_t tid)
 static bool
 create (const char *file, unsigned initial_size)
 {
-    if(file == NULL || strcmp(file, "") == 0)
-    {
-        exit(-1);
-        return 0;
-    }
-    return filesys_create(file, initial_size);
+  lock_acquire (&file_lock);
+  bool success = filesys_create (file, initial_size);
+  lock_release (&file_lock);
+  return success;
 }
 
 static bool
 remove (const char *file)
 {
-    return filesys_remove(file);
+  lock_acquire (&file_lock);
+  bool success = filesys_remove (file);
+  lock_release (&file_lock);
+  return success;
 }
 
 static int
@@ -255,7 +256,7 @@ filesize (int fd)
       else
         {
           lock_acquire (&file_lock);
-          int s = file_length(file_fd->file);
+          int s = file_length (file_fd->file);
           lock_release (&file_lock);
           return s;
         }
@@ -323,7 +324,7 @@ static void
 seek (int fd, unsigned position)
 {
   struct file_fd *file_fd = get_file_fd (fd);
-  if (file_fd)
+  if (file_fd != NULL)
     {
       lock_acquire (&file_lock);
       file_seek (file_fd->file, (int32_t) position);
@@ -334,21 +335,26 @@ seek (int fd, unsigned position)
 static unsigned
 tell (int fd)
 {
-	struct file_fd *file_fd = get_file_fd (fd);
-	lock_acquire (&file_lock);
-	unsigned u = file_tell(file_fd);
-	lock_release(&file_lock);
-    return u;
+  struct file_fd *file_fd = get_file_fd (fd);
+  lock_acquire (&file_lock);
+  unsigned p = file_tell (file_fd->file);
+  lock_release (&file_lock);
+  return p;
 }
 
 static void
 close (int fd)
 {
   struct file_fd *file_fd = get_file_fd (fd);
-  if (file_fd == NULL)
-    return;
-  else
-    file_close(file_fd->file);
+  if (file_fd != NULL)
+    {
+      lock_acquire (&file_lock);
+      file_close (file_fd->file);
+      lock_release (&file_lock);
+      list_remove (&file_fd->filefdelem);
+      free (file_fd->file_name);
+      free (file_fd);
+    }
 }
 
 void
