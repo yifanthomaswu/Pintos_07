@@ -19,6 +19,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -101,7 +102,18 @@ start_process (void *file_name_)
     {
       /* The first token is the name of the executable. */
       if (i == 0)
-        success = load (token, &if_.eip, &if_.esp);
+        {
+          success = load (token, &if_.eip, &if_.esp);
+          struct process_sema *p_s = get_process_sema (
+              thread_current ()->parent_tid);
+          p_s->load_fail = !success;
+          sema_up (&p_s->sema_exec);
+          if (!success)
+            {
+              palloc_free_page (file_name);
+              thread_exit ();
+            }
+        }
       int length = strlen (token) + 1;
       if_.esp -= length;
       memcpy (if_.esp, token, length);
@@ -134,7 +146,7 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+  if (!success)
     thread_exit ();
 
   /* Start the user process by simulating a return from an
@@ -161,8 +173,8 @@ process_wait (tid_t child_tid)
 {
   if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
-
-  sema_down (add_parent (thread_current ()->tid));
+  struct thread *t = thread_current ();
+  sema_down (&add_process_sema (t->tid)->sema_wait);
   set_waited_on (child_tid);
   return get_exit_code (child_tid);
 }
@@ -205,7 +217,7 @@ process_exit (void)
       free (f->file_name);
       free (f);
     }
-  remove_parent (cur->tid);
+  remove_process (cur->tid);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -331,7 +343,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire (&file_lock);
   file = filesys_open (file_name);
+  lock_release (&file_lock);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);

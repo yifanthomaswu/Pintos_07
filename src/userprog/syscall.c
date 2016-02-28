@@ -24,24 +24,14 @@ struct exitstatus
     bool waited_on;
   };
 
-/* Struct used to map a process tid to the semaphore it uses to wait on process. */
-struct process_sema
-{
-  struct list_elem process_sema_elem;
-  tid_t tid;
-  struct semaphore sema;
-};
-
 /* History of dead processes. */
 struct list statuses;
 /* List of waiting processes on their children to die. */
-struct list parents;
+struct list processes;
 
 /* The current free file descriptor available to a process. */
 /* Accessible through the get_new_fd() function. */
 static int fd;
-/* Lock used to synchronise any access to the file system. */
-static struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
 static void *syscall_user_memory (const void *vaddr);
@@ -67,7 +57,7 @@ syscall_init (void)
 {
   /* Initialise the used lists. */
   list_init(&statuses);
-  list_init(&parents);
+  list_init(&processes);
   /* Initialise the next available fd to 2; 0 and 1 reserved for STD[IN/OUT]. */
   fd = 2;
   /* Initialise the file system lock. */
@@ -79,7 +69,9 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  uint32_t *sp = f->esp;
+  uint32_t *sp = syscall_user_memory (f->esp);
+  if (sp == NULL)
+    exit (-1);
   switch (*sp)
     {
     case SYS_HALT:                   /* Halt the operating system. */
@@ -169,8 +161,8 @@ static void
 exit (int status)
 {
   /* Add the about-to-die process to the history list of exit statuses. */
-  add_process(thread_current()->tid, status);
-  sema_up(get_parent_semaphore(thread_current()->parent_tid));
+  add_status(thread_current()->tid, status);
+  sema_up(&get_process_sema(thread_current()->parent_tid)->sema_wait);
   printf ("%s: exit(%d)\n", thread_current()->name, status);
   thread_exit ();
 }
@@ -178,10 +170,27 @@ exit (int status)
 tid_t
 exec (const char *cmd_line)
 {
-  // TODO
   if (syscall_user_memory (cmd_line) == NULL)
     exit (-1);
-  tid_t new_proc_tid = process_execute(cmd_line);
+  tid_t new_proc_tid = process_execute (cmd_line);
+  struct thread *t = thread_current ();
+  struct process_sema *p_s = add_process_sema (t->tid);
+  sema_down (&p_s->sema_exec);
+  if (p_s->load_fail)
+    {
+      struct list_elem *e;
+      for (e = list_begin (&t->children); e != list_end (&t->children);
+           e = list_next (e))
+        {
+          struct child_tid *c_t = list_entry (e, struct child_tid, childtidelem);
+          if (c_t->tid == new_proc_tid)
+            break;
+        }
+      struct child_tid *c_t = list_entry (e, struct child_tid, childtidelem);
+      list_remove (e);
+      free (c_t);
+      return -1;
+    }
   return new_proc_tid;
 }
 
@@ -368,7 +377,7 @@ close (int fd)
 }
 
 void
-add_process (tid_t tid, int status)
+add_status (tid_t tid, int status)
 {
   struct exitstatus *new_process = malloc (sizeof(struct exitstatus));
   if (new_process == NULL)
@@ -379,57 +388,58 @@ add_process (tid_t tid, int status)
   list_push_front (&statuses, &new_process->statuselem);
 }
 
-struct semaphore*
-add_parent (tid_t tid)
+struct process_sema*
+add_process_sema (tid_t tid)
 {
   struct list_elem *e;
-  for (e = list_begin (&parents); e != list_end (&parents); e = list_next (e))
+  for (e = list_begin (&processes); e != list_end (&processes); e = list_next (e))
     {
       struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_sema_elem);
+                                             process_semaelem);
       if (p_s->tid == tid)
-        return &p_s->sema;
+        return p_s;
     }
 
-  struct process_sema *new_parent = malloc (sizeof(struct process_sema));
-  if (new_parent == NULL)
+  struct process_sema *new_process = malloc (sizeof(struct process_sema));
+  if (new_process == NULL)
     thread_exit ();
-  new_parent->tid = tid;
-  sema_init (&new_parent->sema, 0);
-  list_push_front (&parents, &new_parent->process_sema_elem);
-  return &new_parent->sema;
+  new_process->tid = tid;
+  sema_init (&new_process->sema_wait, 0);
+  sema_init (&new_process->sema_exec, 0);
+  list_push_front (&processes, &new_process->process_semaelem);
+  return new_process;
 }
 
 void
-remove_parent (tid_t tid)
+remove_process (tid_t tid)
 {
   struct list_elem *e;
-  for (e = list_begin (&parents); e != list_end (&parents); e = list_next (e))
+  for (e = list_begin (&processes); e != list_end (&processes); e = list_next (e))
     {
       struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_sema_elem);
+                                             process_semaelem);
       if (p_s->tid == tid)
         break;
     }
-  if (e != list_end (&parents))
+  if (e != list_end (&processes))
     {
       struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_sema_elem);
+                                             process_semaelem);
       list_remove (e);
       free (p_s);
     }
 }
 
-struct semaphore*
-get_parent_semaphore (tid_t parent_tid)
+struct process_sema*
+get_process_sema (tid_t tid)
 {
   struct list_elem *e;
-  for (e = list_begin (&parents); e != list_end (&parents); e = list_next (e))
+  for (e = list_begin (&processes); e != list_end (&processes); e = list_next (e))
     {
       struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_sema_elem);
-      if (p_s->tid == parent_tid)
-        return &p_s->sema;
+                                             process_semaelem);
+      if (p_s->tid == tid)
+        return p_s;
     }
   NOT_REACHED()
 }

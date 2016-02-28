@@ -82,8 +82,8 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
-  add_process (thread_current ()->tid, KILLED_EXIT_CODE);
-  sema_up (get_parent_semaphore (thread_current ()->parent_tid));
+  add_status (thread_current ()->tid, KILLED_EXIT_CODE);
+  sema_up (get_process_sema (thread_current ()->parent_tid));
   switch (f->cs)
     {
     case SEL_UCSEG:
