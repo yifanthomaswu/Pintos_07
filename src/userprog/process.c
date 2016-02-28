@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -14,11 +15,10 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "userprog/syscall.h"
-#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -40,6 +40,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Create a new thread to execute FILE_NAME. */
   fn_copy_tmp = palloc_get_page (0);
   if (fn_copy_tmp == NULL)
     {
@@ -47,8 +48,6 @@ process_execute (const char *file_name)
       return TID_ERROR;
     }
   strlcpy (fn_copy_tmp, file_name, PGSIZE);
-
-  /* Create a new thread to execute FILE_NAME. */
   char *token, *save_ptr;
   token = strtok_r (fn_copy_tmp, " ", &save_ptr);
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
@@ -58,7 +57,6 @@ process_execute (const char *file_name)
   return tid;
 }
 
-
 /* A thread function that loads a user process and starts it
    running. */
 static void
@@ -66,7 +64,7 @@ start_process (void *file_name_)
 {
   char *file_name = file_name_;
   struct intr_frame if_;
-  bool success;
+  bool success = false;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -74,11 +72,11 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  char *file_name_tmp = file_name_;
+  /* Count the number of arguments. */
   int count = 0;
   bool in_word = false;
   do
-    switch (*file_name_tmp)
+    switch (*file_name)
       {
       case '\0':
       case ' ':
@@ -91,14 +89,17 @@ start_process (void *file_name_)
       default:
         in_word = true;
       }
-  while (*file_name_tmp++);
+  while (*file_name++);
+  file_name = file_name_;
 
+  /* Pushes arguments onto stack and recored their addresses on stack. */
   uint32_t address[count];
   char *token, *save_ptr;
   int i = 0;
   for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
     {
+      /* The first token is the name of the executable. */
       if (i == 0)
         success = load (token, &if_.eip, &if_.esp);
       int length = strlen (token) + 1;
@@ -107,20 +108,29 @@ start_process (void *file_name_)
       address[i] = (uint32_t) if_.esp;
       i++;
     }
+
+  /* Word-align used to round stack pointer down to a multiple of 4. */
   if_.esp -= (uint32_t) if_.esp % 4;
+
+  /* Null pointer sentinel for argv[argc]. */
   if_.esp -= 4;
+
+  /* Pushes addresses of arguments onto stack. */
   int j;
   for (j = count - 1; j >= 0; j--)
     {
       if_.esp -= 4;
       *((uint32_t *) if_.esp) = address[j];
     }
+
+  /* Pushes argv and argc. */
   if_.esp -= 4;
   *((uint32_t *) if_.esp) = (uint32_t) if_.esp + 4;
   if_.esp -= 4;
   *((uint32_t *) if_.esp) = count;
+
+  /* Pushes fake return address. */
   if_.esp -= 4;
-//  hex_dump(if_.esp, if_.esp, 64,true);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -152,20 +162,20 @@ process_wait (tid_t child_tid)
   if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
 
-  sema_down(add_parent(thread_current()->tid));
-  set_waited_on(child_tid);
+  sema_down (add_parent (thread_current ()->tid));
+  set_waited_on (child_tid);
   return get_exit_code (child_tid);
 }
 
 bool
-is_child (tid_t tid)
+is_child (tid_t child_tid)
 {
   struct list *children = &thread_current ()->children;
   struct list_elem *e;
   for (e = list_begin (children); e != list_end (children); e = list_next (e))
     {
       struct child_tid *t = list_entry (e, struct child_tid, childtidelem);
-      if (t->tid == tid)
+      if (t->tid == child_tid)
         return true;
     }
   return false;
@@ -178,21 +188,24 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  /* Frees all child to tid mappings a process holds. */
   while (!list_empty (&cur->children))
     {
       struct list_elem *e = list_pop_front (&cur->children);
       struct child_tid *c = list_entry (e, struct child_tid, childtidelem);
       free (c);
     }
+
+  /* Frees all flies to fd mappings a process holds. */
   while (!list_empty (&cur->files))
     {
       struct list_elem *e = list_pop_front (&cur->files);
       struct file_fd *f = list_entry (e, struct file_fd, filefdelem);
-      file_close(f->file);
+      file_close (f->file);
       free (f->file_name);
       free (f);
     }
-  remove_parent(cur->tid);
+  remove_parent (cur->tid);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

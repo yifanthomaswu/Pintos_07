@@ -187,7 +187,7 @@ thread_create (const char *name, int priority,
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
-     member cannot be observefile_fdd. */
+     member cannot be observed. */
   old_level = intr_disable ();
 
   /* Stack frame for kernel_thread(). */
@@ -205,19 +205,19 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  /* Set the childs parent tid filed to parents tid. */
-  t->parent_tid = thread_current()->tid;
-  struct child_tid *child = malloc(sizeof(struct child_tid));
+  /* Set the child's parent_tid filed to parent's tid. */
+  t->parent_tid = thread_current ()->tid;
+  struct child_tid *child = malloc (sizeof(struct child_tid));
   if (child == NULL)
     {
-      /* If fails, free page, set interrupt and return -1. */
-      palloc_free_page(t);
+      /* If fails, free page, set back interrupt and return TID_ERROR. */
+      palloc_free_page (t);
       intr_set_level (old_level);
       return TID_ERROR;
     }
   child->tid = t->tid;
   /* Add child process to list of current process. */
-  list_push_front(&thread_current()->children, &child->childtidelem);
+  list_push_front (&thread_current ()->children, &child->childtidelem);
 
   intr_set_level (old_level);
 
@@ -485,7 +485,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  /* Initialise the threads' lists. */
+  /* Initialise the thread's lists. */
   list_init (&t->children);
   list_init (&t->files);
   t->magic = THREAD_MAGIC;

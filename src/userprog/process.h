@@ -4,8 +4,8 @@
 #include "threads/thread.h"
 
 tid_t process_execute (const char *file_name);
-int process_wait (tid_t);
-bool is_child (tid_t tid);
+int process_wait (tid_t child_tid);
+bool is_child (tid_t child_tid);
 void process_exit (void);
 void process_activate (void);
 
