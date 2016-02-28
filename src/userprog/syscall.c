@@ -179,6 +179,8 @@ tid_t
 exec (const char *cmd_line)
 {
   // TODO
+  if (syscall_user_memory (cmd_line) == NULL)
+    exit (-1);
   tid_t new_proc_tid = process_execute(cmd_line);
   return new_proc_tid;
 }
@@ -200,6 +202,8 @@ wait (tid_t tid)
 static bool
 create (const char *file, unsigned initial_size)
 {
+  if (syscall_user_memory (file) == NULL)
+    exit (-1);
   lock_acquire (&file_lock);
   bool success = filesys_create (file, initial_size);
   lock_release (&file_lock);
@@ -218,6 +222,8 @@ remove (const char *file)
 static int
 open (const char *file)
 {
+  if (syscall_user_memory (file) == NULL)
+    exit (-1);
   lock_acquire (&file_lock);
   struct file *current_file = filesys_open (file);
   lock_release (&file_lock);
@@ -266,6 +272,8 @@ filesize (int fd)
 static int
 read (int fd, void *buffer, unsigned size)
 {
+  if (syscall_user_memory (buffer) == NULL)
+    exit (-1);
   if (fd == STDIN_FILENO)
     {
       uint8_t *char_buffer = buffer;
@@ -298,6 +306,8 @@ read (int fd, void *buffer, unsigned size)
 static int
 write (int fd, const void *buffer, unsigned size)
 {
+  if (syscall_user_memory (buffer) == NULL)
+    exit (-1);
   if (fd == STDOUT_FILENO)
     {
       putbuf (buffer, size);
