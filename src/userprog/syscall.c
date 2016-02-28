@@ -2,17 +2,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>
+#include <stdbool.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "userprog/pagedir.h"
-#include "devices/shutdown.h"
-#include "userprog/process.h"
-#include "filesys/filesys.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
-#include "filesys/file.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
+#include "devices/shutdown.h"
 #include "devices/input.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
 
 /* Struct used to keep the history of dead processes and their exit codes. */
 struct exitstatus
@@ -327,7 +328,7 @@ write (int fd, const void *buffer, unsigned size)
   else
     {
       struct file_fd *file_fd = get_file_fd (fd);
-      if (file_fd == NULL)
+      if (file_fd == NULL || file_fd->file->deny_write)
         return 0;
       else
         {
