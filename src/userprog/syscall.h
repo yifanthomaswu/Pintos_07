@@ -20,6 +20,8 @@ struct process_sema
 };
 
 void syscall_init (void);
+void *syscall_user_memory (const void *vaddr);
+
 void add_status (tid_t tid, int status);
 struct process_sema* add_process_sema (tid_t tid);
 void remove_process (tid_t tid);
@@ -29,5 +31,7 @@ void set_exit_code (tid_t tid, int status);
 bool is_waited_on (tid_t tid);
 void set_waited_on (tid_t tid);
 bool is_dead (tid_t tid);
+
+void exit (int status);
 
 #endif /* userprog/syscall.h */
