@@ -84,10 +84,16 @@ kill (struct intr_frame *f)
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
   struct thread *t = thread_current ();
+
+  /* An exception has exit code -1, add it to history of processes. */
   add_status (t->tid, KILLED_EXIT_CODE);
+
+  /* Get the semaphore struct of the process, if not null up the wait semaphore. */
   struct process_sema *p_s = get_process_sema (t->parent_tid);
   if (p_s != NULL)
     sema_up (&p_s->sema_wait);
+
+  /* Get the processes executable file, if exists, close it. */
   struct file * exec_file = t->exec_file;
   if (exec_file != NULL)
     {

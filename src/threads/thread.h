@@ -120,8 +120,7 @@ struct thread
     struct list children;          /* List of children of the process. */
     tid_t parent_tid;              /* Tid of the parent of the process. */
     struct list files;             /* List of file_fd to track open files. */
-
-    struct file *exec_file;
+    struct file *exec_file; 	   /* Holds file pointer to file being executed. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
