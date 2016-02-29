@@ -372,7 +372,7 @@ write (int fd, const void *buffer, unsigned size)
   else
     {
       struct file_fd *file_fd = get_file_fd (fd);
-      if (file_fd == NULL || file_fd->file->deny_write)
+      if (file_fd == NULL)
         return 0;
       else
         {
