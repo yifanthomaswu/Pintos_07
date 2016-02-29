@@ -72,6 +72,10 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool list_less_child (const struct list_elem *a,
+                             const struct list_elem *b,
+                             void *aux UNUSED);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -217,7 +221,8 @@ thread_create (const char *name, int priority,
     }
   child->tid = t->tid;
   /* Add child process to list of current process. */
-  list_push_front (&thread_current ()->children, &child->childtidelem);
+  list_insert_ordered (&thread_current ()->children, &child->childtidelem,
+                       list_less_child, NULL);
 
   intr_set_level (old_level);
 
@@ -225,6 +230,14 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
 
   return tid;
+}
+
+static bool
+list_less_child (const struct list_elem *a, const struct list_elem *b,
+                 void *aux UNUSED)
+{
+  return list_entry (a, struct child_tid, childtidelem)->tid <
+      list_entry (b, struct child_tid, childtidelem)->tid;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled

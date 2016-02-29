@@ -196,6 +196,8 @@ is_child (tid_t child_tid)
       struct child_tid *t = list_entry (e, struct child_tid, childtidelem);
       if (t->tid == child_tid)
         return true;
+      else if (t->tid > child_tid)
+        return false;
     }
   return false;
 }

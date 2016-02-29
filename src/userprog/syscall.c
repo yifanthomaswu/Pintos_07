@@ -57,6 +57,15 @@ static int open (const char *file);
 static void close (int fd);
 
 static struct status *get_status (tid_t tid);
+static bool list_less_file (const struct list_elem *a,
+                            const struct list_elem *b,
+                            void *aux UNUSED);
+static bool list_less_status (const struct list_elem *a,
+                              const struct list_elem *b,
+                              void *aux UNUSED);
+static bool list_less_process (const struct list_elem *a,
+                               const struct list_elem *b,
+                               void *aux UNUSED);
 
 void
 syscall_init (void)
@@ -184,6 +193,8 @@ get_file_fd (int fd)
       struct file_fd *f = list_entry (e, struct file_fd, filefdelem);
       if (f->fd == fd)
         return f;
+      else if (f->fd > fd)
+        return NULL;
     }
   return NULL;
 }
@@ -319,7 +330,8 @@ open (const char *file)
         }
       memcpy (file_fd->file_name, file, length);
       file_fd->file = current_file;
-      list_push_front (&thread_current ()->files, &file_fd->filefdelem);
+      list_insert_ordered (&thread_current ()->files, &file_fd->filefdelem,
+                           list_less_file, NULL);
       return file_fd->fd;
     }
 }
@@ -455,7 +467,8 @@ add_process_sema (tid_t tid)
       sema_init (&p_s->sema_wait, 0);
       sema_init (&p_s->sema_exec, 0);
       sema_down (&processes_sema);
-      list_push_front (&processes, &p_s->process_semaelem);
+      list_insert_ordered (&processes, &p_s->process_semaelem,
+                           list_less_process, NULL);
       sema_up (&processes_sema);
       return p_s;
     }
@@ -478,6 +491,8 @@ get_process_sema (tid_t tid)
           sema_up (&processes_sema);
           return p_s;
         }
+      else if (p_s->tid > tid)
+        break;
     }
   sema_up (&processes_sema);
   return NULL;
@@ -504,7 +519,8 @@ add_status (tid_t tid, int status)
   new_status->waited_on = false;
   new_status->status = status;
   sema_down (&statuses_sema);
-  list_push_front (&statuses, &new_status->statuselem);
+  list_insert_ordered (&statuses, &new_status->statuselem, list_less_status,
+                       NULL);
   sema_up (&statuses_sema);
 }
 
@@ -522,6 +538,8 @@ get_status (tid_t tid)
           sema_up (&statuses_sema);
           return s;
         }
+      else if (s->tid > tid)
+        break;
     }
   sema_up (&statuses_sema);
   return NULL;
@@ -558,4 +576,28 @@ bool
 is_dead (tid_t tid)
 {
   return get_status (tid) != NULL;
+}
+
+static bool
+list_less_file (const struct list_elem *a, const struct list_elem *b,
+                void *aux UNUSED)
+{
+  return list_entry (a, struct file_fd, filefdelem)->fd <
+      list_entry (b, struct file_fd, filefdelem)->fd;
+}
+
+static bool
+list_less_status (const struct list_elem *a, const struct list_elem *b,
+                  void *aux UNUSED)
+{
+  return list_entry (a, struct status, statuselem)->tid <
+      list_entry (b, struct status, statuselem)->tid;
+}
+
+static bool
+list_less_process (const struct list_elem *a, const struct list_elem *b,
+                   void *aux UNUSED)
+{
+  return list_entry (a, struct process_sema, process_semaelem)->tid <
+      list_entry (b, struct process_sema, process_semaelem)->tid;
 }
