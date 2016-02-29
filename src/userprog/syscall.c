@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>
-#include <stdbool.h>
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
 #include "threads/synch.h"
@@ -25,26 +24,26 @@ struct status
     bool waited_on;
   };
 
-/* History of dead processes. */
-struct list statuses;
-/* List of waiting processes on their children to die. */
-struct list processes;
-
+/* Lock used to synchronise any access to the file system. */
+struct lock file_lock;
 /* The current free file descriptor available to a process. */
 /* Accessible through the get_new_fd() function. */
 static int fd_count;
-/* Lock used to synchronise any access to the file system. */
-struct lock file_lock;
+
+/* History of dead processes. */
+static struct list statuses;
+/* List of waiting processes on their children to die. */
+static struct list processes;
 
 static void syscall_handler (struct intr_frame *);
-static int get_new_fd(void);
+static inline int get_new_fd (void);
 static struct file_fd *get_file_fd (int fd);
 
 static void halt (void);
 static void exit (int status);
 tid_t exec (const char *cmd_line);
 static int wait (tid_t tid);
-static bool create(const char *file, unsigned initial_size);
+static bool create (const char *file, unsigned initial_size);
 static bool remove (const char *file);
 static int filesize (int fd);
 static int read (int fd, void *buffer, unsigned size);
@@ -57,15 +56,15 @@ static void close (int fd);
 static struct status *get_status (tid_t tid);
 
 void
-syscall_init (void) 
+syscall_init (void)
 {
   /* Initialise the used lists. */
-  list_init(&statuses);
-  list_init(&processes);
+  list_init (&statuses);
+  list_init (&processes);
   /* Initialise the next available fd to 2; 0 and 1 reserved for STD[IN/OUT]. */
   fd_count = 2;
   /* Initialise the file system lock. */
-  lock_init(&file_lock);
+  lock_init (&file_lock);
   /* Register the system call handler on 0x30. */
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
@@ -159,8 +158,8 @@ syscall_user_memory (const void *vaddr)
 }
 
 /* Returns and then increments the next available file descriptor. */
-static int
-get_new_fd(void)
+static inline int
+get_new_fd (void)
 {
   return fd_count++;
 }
@@ -185,14 +184,13 @@ get_file_fd (int fd)
 static void
 halt (void)
 {
-    shutdown_power_off ();
+  shutdown_power_off ();
 }
 
 static void
 exit (int status)
 {
   pre_exit (status);
-  printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
 }
 
@@ -216,6 +214,7 @@ pre_exit (int status)
       file_close (exec_file);
       lock_release (&file_lock);
     }
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
 }
 
 tid_t
@@ -223,26 +222,31 @@ exec (const char *cmd_line)
 {
   if (syscall_user_memory (cmd_line) == NULL)
     exit (-1);
-  tid_t new_proc_tid = process_execute (cmd_line);
-  struct thread *t = thread_current ();
-  struct process_sema *p_s = add_process_sema (t->tid);
-  sema_down (&p_s->sema_exec);
-  if (p_s->load_fail)
+  tid_t new_tid = process_execute (cmd_line);
+  if (new_tid != -1)
     {
-      struct list_elem *e;
-      for (e = list_begin (&t->children); e != list_end (&t->children);
-           e = list_next (e))
+      struct thread *t = thread_current ();
+      struct process_sema *p_s = add_process_sema (t->tid);
+      sema_down (&p_s->sema_exec);
+      if (p_s->load_fail)
         {
-          struct child_tid *c_t = list_entry (e, struct child_tid, childtidelem);
-          if (c_t->tid == new_proc_tid)
-            break;
+          struct list_elem *e;
+          for (e = list_begin (&t->children); e != list_end (&t->children);
+               e = list_next (e))
+            {
+              struct child_tid *c_t = list_entry (e, struct child_tid,
+                                                  childtidelem);
+              if (c_t->tid == new_tid)
+                {
+                  list_remove (e);
+                  free (c_t);
+                  break;
+                }
+            }
+          return -1;
         }
-      struct child_tid *c_t = list_entry (e, struct child_tid, childtidelem);
-      list_remove (e);
-      free (c_t);
-      return -1;
     }
-  return new_proc_tid;
+  return new_tid;
 }
 
 static int
