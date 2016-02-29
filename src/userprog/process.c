@@ -179,15 +179,18 @@ process_wait (tid_t child_tid)
   struct thread *t = thread_current ();
   sema_init(&add_process_sema (t->tid)->sema_wait, 0);
   sema_down (&add_process_sema (t->tid)->sema_wait);
+  /* Set waited on to true, a process can be waited on only once. */
   set_waited_on (child_tid);
   return get_exit_code (child_tid);
 }
 
+/* Returns true if the given child_tid is a valid child of the current process. */
 bool
 is_child (tid_t child_tid)
 {
   struct list *children = &thread_current ()->children;
   struct list_elem *e;
+  /* Search for child_tid in list of child tids. */
   for (e = list_begin (children); e != list_end (children); e = list_next (e))
     {
       struct child_tid *t = list_entry (e, struct child_tid, childtidelem);

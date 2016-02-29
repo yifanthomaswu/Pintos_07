@@ -192,19 +192,23 @@ static void
 exit (int status)
 {
   pre_exit (status);
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
 }
 
 void
 pre_exit (int status)
 {
-  /* Add the about-to-die process to the history list of exit statuses. */
   struct thread *t = thread_current ();
+  /* An exception has exit code -1, add it to history of processes. */
   add_status (t->tid, status);
+
+  /* Get the semaphore struct of the process, if not null up the wait semaphore. */
   struct process_sema *p_s = get_process_sema (t->parent_tid);
   if (p_s != NULL)
     sema_up (&p_s->sema_wait);
-  printf ("%s: exit(%d)\n", t->name, status);
+
+  /* Get the processes executable file, if exists, close it. */
   struct file * exec_file = t->exec_file;
   if (exec_file != NULL)
     {
