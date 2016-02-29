@@ -5,7 +5,6 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "filesys/file.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -83,18 +82,7 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
-  struct thread *t = thread_current ();
-  add_status (t->tid, KILLED_EXIT_CODE);
-  struct process_sema *p_s = get_process_sema (t->parent_tid);
-  if (p_s != NULL)
-    sema_up (&p_s->sema_wait);
-  struct file * exec_file = t->exec_file;
-  if (exec_file != NULL)
-    {
-      lock_acquire (&file_lock);
-      file_close (exec_file);
-      lock_release (&file_lock);
-    }
+  pre_exit (-1);
 
   switch (f->cs)
     {
@@ -164,7 +152,10 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   if (user && syscall_user_memory (fault_addr) == NULL)
-    exit (-1);
+    {
+      pre_exit (-1);
+      thread_exit ();
+    }
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

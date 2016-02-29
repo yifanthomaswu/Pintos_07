@@ -28,17 +28,17 @@ typedef int tid_t;
 /* Struct for holding the tids of a process' children. */
 struct child_tid
   {
-    tid_t tid;
     struct list_elem childtidelem;
+    tid_t tid;
   };
 
 /* Struct used to keep track of open files to their fds. */
 struct file_fd
   {
+    struct list_elem filefdelem;
     int fd;
     char *file_name;
     struct file *file;
-    struct list_elem filefdelem;
   };
 
 /* A kernel thread or user process.

@@ -221,7 +221,7 @@ process_exit (void)
       free (f->file_name);
       free (f);
     }
-  remove_process (cur->tid);
+  remove_process_sema (cur->tid);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

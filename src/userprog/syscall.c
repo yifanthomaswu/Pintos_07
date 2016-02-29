@@ -4,19 +4,19 @@
 #include <syscall-nr.h>
 #include <stdbool.h>
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "threads/synch.h"
-#include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
-#include "devices/shutdown.h"
 #include "devices/input.h"
-#include "filesys/filesys.h"
+#include "devices/shutdown.h"
 #include "filesys/file.h"
+#include "filesys/filesys.h"
 
 /* Struct used to keep the history of dead processes and their exit codes. */
-struct exitstatus
+struct status
   {
     struct list_elem statuselem;
     tid_t tid;
@@ -32,13 +32,16 @@ struct list processes;
 
 /* The current free file descriptor available to a process. */
 /* Accessible through the get_new_fd() function. */
-static int fd;
+static int fd_count;
+/* Lock used to synchronise any access to the file system. */
+struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
 static int get_new_fd(void);
 static struct file_fd *get_file_fd (int fd);
 
 static void halt (void);
+static void exit (int status);
 tid_t exec (const char *cmd_line);
 static int wait (tid_t tid);
 static bool create(const char *file, unsigned initial_size);
@@ -51,6 +54,8 @@ static unsigned tell (int fd);
 static int open (const char *file);
 static void close (int fd);
 
+static struct status *get_status (tid_t tid);
+
 void
 syscall_init (void) 
 {
@@ -58,7 +63,7 @@ syscall_init (void)
   list_init(&statuses);
   list_init(&processes);
   /* Initialise the next available fd to 2; 0 and 1 reserved for STD[IN/OUT]. */
-  fd = 2;
+  fd_count = 2;
   /* Initialise the file system lock. */
   lock_init(&file_lock);
   /* Register the system call handler on 0x30. */
@@ -69,9 +74,9 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   uint32_t *sp = f->esp;
-  if (syscall_user_memory(sp) == NULL)
+  if (syscall_user_memory (sp) == NULL)
     exit (-1);
-  uint32_t arg0, arg1, arg2;
+  uint32_t arg0 = 0, arg1 = 0, arg2 = 0;
   switch (*sp)
     {
     case SYS_READ:
@@ -102,45 +107,45 @@ syscall_handler (struct intr_frame *f)
   switch (*sp)
     {
     case SYS_HALT:                   /* Halt the operating system. */
-        halt();
-        break;
+      halt ();
+      break;
     case SYS_EXIT:                   /* Terminate this process. */
-        f->eax = arg0;
-        exit (arg0);
-        break;
+      f->eax = arg0;
+      exit (arg0);
+      break;
     case SYS_EXEC:                   /* Start another process. */
-        f->eax = exec ((char *) arg0);
-        break;
+      f->eax = exec ((char *) arg0);
+      break;
     case SYS_WAIT:                   /* Wait for a child process to die. */
-        f->eax = wait (arg0);
-        break;
+      f->eax = wait (arg0);
+      break;
     case SYS_CREATE:                 /* Create a file. */
-        f->eax = create ((char *) arg0, (unsigned) arg1);
-        break;
+      f->eax = create ((char *) arg0, (unsigned) arg1);
+      break;
     case SYS_REMOVE:                 /* Delete a file. */
-        f->eax = remove ((char *) arg0);
-        break;
+      f->eax = remove ((char *) arg0);
+      break;
     case SYS_OPEN:                   /* Open a file. */
-        f->eax = open ((char *) arg0);
-        break;
+      f->eax = open ((char *) arg0);
+      break;
     case SYS_FILESIZE:               /* Obtain a file's size. */
-        f->eax = filesize (arg0);
-        break;
+      f->eax = filesize (arg0);
+      break;
     case SYS_READ:                   /* Read from a file. */
-        f->eax = read (arg0, (void *) arg1, (unsigned) arg2);
-        break;
+      f->eax = read (arg0, (void *) arg1, (unsigned) arg2);
+      break;
     case SYS_WRITE:                  /* Write to a file. */
-        f->eax = write (arg0, (void *) arg1, (unsigned) arg2);
-        break;
+      f->eax = write (arg0, (void *) arg1, (unsigned) arg2);
+      break;
     case SYS_SEEK:                   /* Change position in a file. */
-        seek (arg0, (unsigned) arg1);
-        break;
+      seek (arg0, (unsigned) arg1);
+      break;
     case SYS_TELL:                   /* Report current position in a file. */
-        f->eax = tell (arg0);
-        break;
+      f->eax = tell (arg0);
+      break;
     case SYS_CLOSE:                  /* Close a file. */
-        close (arg0);
-        break;
+      close (arg0);
+      break;
     }
 }
 
@@ -157,7 +162,7 @@ syscall_user_memory (const void *vaddr)
 static int
 get_new_fd(void)
 {
-  return fd++;
+  return fd_count++;
 }
 
 /* Returns file pointer to the file referenced by fd. */
@@ -181,11 +186,17 @@ static void
 halt (void)
 {
     shutdown_power_off ();
-    NOT_REACHED();
+}
+
+static void
+exit (int status)
+{
+  pre_exit (status);
+  thread_exit ();
 }
 
 void
-exit (int status)
+pre_exit (int status)
 {
   /* Add the about-to-die process to the history list of exit statuses. */
   struct thread *t = thread_current ();
@@ -195,19 +206,12 @@ exit (int status)
     sema_up (&p_s->sema_wait);
   printf ("%s: exit(%d)\n", t->name, status);
   struct file * exec_file = t->exec_file;
-    if (exec_file != NULL)
-      {
-        lock_acquire (&file_lock);
-        file_close (exec_file);
-        lock_release (&file_lock);
-      }
-
-//  if (t->exec_file_fd != 0)
-//    {
-//      file_allow_write(&get_file_fd(t->exec_file_fd)->file);
-//      close(t->exec_file_fd);
-//    }
-  thread_exit ();
+  if (exec_file != NULL)
+    {
+      lock_acquire (&file_lock);
+      file_close (exec_file);
+      lock_release (&file_lock);
+    }
 }
 
 tid_t
@@ -421,65 +425,31 @@ close (int fd)
     }
 }
 
-void
-add_status (tid_t tid, int status)
-{
-  struct exitstatus *new_process = malloc (sizeof(struct exitstatus));
-  if (new_process == NULL)
-    thread_exit ();
-  new_process->tid = tid;
-  new_process->waited_on = false;
-  new_process->status = status;
-  list_push_front (&statuses, &new_process->statuselem);
-}
-
-struct process_sema*
+struct process_sema *
 add_process_sema (tid_t tid)
 {
-  struct list_elem *e;
-  for (e = list_begin (&processes); e != list_end (&processes); e = list_next (e))
+  struct process_sema *p_s = get_process_sema (tid);
+  if (p_s == NULL)
     {
-      struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_semaelem);
-      if (p_s->tid == tid)
-        return p_s;
+      p_s = malloc (sizeof(struct process_sema));
+      if (p_s == NULL)
+        exit (-1);
+      p_s->tid = tid;
+      sema_init (&p_s->sema_wait, 0);
+      sema_init (&p_s->sema_exec, 0);
+      list_push_front (&processes, &p_s->process_semaelem);
+      return p_s;
     }
-
-  struct process_sema *new_process = malloc (sizeof(struct process_sema));
-  if (new_process == NULL)
-    thread_exit ();
-  new_process->tid = tid;
-  sema_init (&new_process->sema_wait, 0);
-  sema_init (&new_process->sema_exec, 0);
-  list_push_front (&processes, &new_process->process_semaelem);
-  return new_process;
+  else
+    return p_s;
 }
 
-void
-remove_process (tid_t tid)
-{
-  struct list_elem *e;
-  for (e = list_begin (&processes); e != list_end (&processes); e = list_next (e))
-    {
-      struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_semaelem);
-      if (p_s->tid == tid)
-        break;
-    }
-  if (e != list_end (&processes))
-    {
-      struct process_sema *p_s = list_entry (e, struct process_sema,
-                                             process_semaelem);
-      list_remove (e);
-      free (p_s);
-    }
-}
-
-struct process_sema*
+struct process_sema *
 get_process_sema (tid_t tid)
 {
   struct list_elem *e;
-  for (e = list_begin (&processes); e != list_end (&processes); e = list_next (e))
+  for (e = list_begin (&processes); e != list_end (&processes);
+       e = list_next (e))
     {
       struct process_sema *p_s = list_entry (e, struct process_sema,
                                              process_semaelem);
@@ -489,77 +459,72 @@ get_process_sema (tid_t tid)
   return NULL;
 }
 
-int
-get_exit_code (tid_t tid)
+void
+remove_process_sema (tid_t tid)
 {
-  struct list_elem *e;
-  for (e = list_begin (&statuses); e != list_end (&statuses);
-       e = list_next (e))
+  struct process_sema *p_s = get_process_sema (tid);
+  if (p_s != NULL)
     {
-      struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
-      if (e_s->tid == tid)
-        return e_s->status;
+      list_remove (&p_s->process_semaelem);
+      free (p_s);
     }
-  NOT_REACHED()
 }
 
 void
-set_exit_code (tid_t tid, int status)
+add_status (tid_t tid, int status)
+{
+  struct status *new_status = malloc (sizeof(struct status));
+  if (new_status == NULL)
+    exit (-1);
+  new_status->tid = tid;
+  new_status->waited_on = false;
+  new_status->status = status;
+  list_push_front (&statuses, &new_status->statuselem);
+}
+
+static struct status *
+get_status (tid_t tid)
 {
   struct list_elem *e;
   for (e = list_begin (&statuses); e != list_end (&statuses);
        e = list_next (e))
     {
-      struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
-      if (e_s->tid == tid)
-        {
-          e_s->status = status;
-          return;
-        }
+      struct status *s = list_entry (e, struct status, statuselem);
+      if (s->tid == tid)
+        return s;
     }
+  return NULL;
+}
+
+int
+get_exit_code (tid_t tid)
+{
+  struct status *s = get_status (tid);
+  if (s != NULL)
+    return s->status;
+  NOT_REACHED ();
 }
 
 bool
 is_waited_on (tid_t tid)
 {
-  struct list_elem *e;
-  for (e = list_begin (&statuses); e != list_end (&statuses);
-       e = list_next (e))
-    {
-      struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
-      if (e_s->tid == tid)
-        return e_s->waited_on;
-    }
-  return false;
-  NOT_REACHED()
+  struct status *s = get_status (tid);
+  if (s != NULL)
+    return s->waited_on;
+  else
+    return false;
 }
 
 void
 set_waited_on (tid_t tid)
 {
-  struct list_elem *e;
-  for (e = list_begin (&statuses); e != list_end (&statuses);
-       e = list_next (e))
-    {
-      struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
-      if (e_s->tid == tid)
-        {
-          e_s->waited_on = true;
-          return;
-        }
-    }
+  struct status *s = get_status (tid);
+  if (s != NULL)
+    s->waited_on = true;
 }
 
 bool
 is_dead (tid_t tid)
 {
-  struct list_elem *e;
-  for (e = list_begin (&statuses); e != list_end (&statuses);
-       e = list_next (e))
-    {
-      struct exitstatus *e_s = list_entry (e, struct exitstatus, statuselem);
-      if (e_s->tid == tid)
-        return true;
-    }
-  return false;
+  return get_status (tid) != NULL;
 }
