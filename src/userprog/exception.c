@@ -82,7 +82,11 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
-  add_status (thread_current ()->tid, KILLED_EXIT_CODE);
+  struct thread *t = thread_current ();
+  add_status (t->tid, KILLED_EXIT_CODE);
+  struct process_sema *p_s = get_process_sema (t->parent_tid);
+  if (p_s != NULL)
+    sema_up (&p_s->sema_wait);
   sema_up(&get_process_sema(thread_current()->parent_tid)->sema_wait);
   switch (f->cs)
     {

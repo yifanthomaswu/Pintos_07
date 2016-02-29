@@ -177,7 +177,6 @@ process_wait (tid_t child_tid)
   if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
   struct thread *t = thread_current ();
-//  printf("proc_wait:%d\n", child_tid);
   sema_init(&add_process_sema (t->tid)->sema_wait, 0);
   sema_down (&add_process_sema (t->tid)->sema_wait);
   set_waited_on (child_tid);

@@ -41,14 +41,14 @@ static struct file_fd *get_file_fd (int fd);
 
 static void halt (void);
 static void exit (int status);
+tid_t exec (const char *cmd_line);
 static int wait (tid_t tid);
+static bool create(const char *file, unsigned initial_size);
 static bool remove (const char *file);
 static int open (const char *file);
 static int filesize (int fd);
 static int read (int fd, void *buffer, unsigned size);
-tid_t exec (const char *cmd_line);
 static int write (int fd, const void *buffer, unsigned size);
-static bool create(const char *file, unsigned initial_size);
 static void seek (int fd, unsigned position);
 static unsigned tell (int fd);
 static void close (int fd);
@@ -70,50 +70,78 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  uint32_t *sp = syscall_user_memory (f->esp);
-  if (sp == NULL)
+  uint32_t *sp = f->esp;
+  if (syscall_user_memory(sp) == NULL)
     exit (-1);
+  uint32_t arg0, arg1, arg2;
+  switch (*sp)
+    {
+    case SYS_READ:
+    case SYS_WRITE:
+      if (!is_user_vaddr (sp + 3))
+        exit (-1);
+      else
+        arg2 = *(sp + 3);
+    case SYS_CREATE:
+    case SYS_SEEK:
+      if (!is_user_vaddr (sp + 2))
+        exit (-1);
+      else
+        arg1 = *(sp + 2);
+    case SYS_EXIT:
+    case SYS_EXEC:
+    case SYS_WAIT:
+    case SYS_REMOVE:
+    case SYS_OPEN:
+    case SYS_FILESIZE:
+    case SYS_TELL:
+    case SYS_CLOSE:
+      if (!is_user_vaddr (sp + 1))
+        exit (-1);
+      else
+        arg0 = *(sp + 1);
+    }
   switch (*sp)
     {
     case SYS_HALT:                   /* Halt the operating system. */
         halt();
         break;
     case SYS_EXIT:                   /* Terminate this process. */
-        f->eax = *(sp + 1);
-        exit (*(sp + 1));
+        f->eax = arg0;
+        exit (arg0);
         break;
     case SYS_EXEC:                   /* Start another process. */
-        f->eax = exec ((char *) *(sp + 1));
+        f->eax = exec ((char *) arg0);
         break;
     case SYS_WAIT:                   /* Wait for a child process to die. */
-        f->eax = wait (*(sp + 1));
+        f->eax = wait (arg0);
         break;
     case SYS_CREATE:                 /* Create a file. */
-        f->eax = create ((char *) *(sp + 1), (unsigned) *(sp + 2));
+        f->eax = create ((char *) arg0, (unsigned) arg1);
         break;
     case SYS_REMOVE:                 /* Delete a file. */
-        f->eax = remove ((char *) *(sp + 1));
+        f->eax = remove ((char *) arg0);
         break;
     case SYS_OPEN:                   /* Open a file. */
-        f->eax = open ((char *) *(sp + 1));
+        f->eax = open ((char *) arg0);
         break;
     case SYS_FILESIZE:               /* Obtain a file's size. */
-        f->eax = filesize ((int) *(sp + 1));
+        f->eax = filesize (arg0);
         break;
     case SYS_READ:                   /* Read from a file. */
-        f->eax = read (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
+        f->eax = read (arg0, (void *) arg1, (unsigned) arg2);
         break;
     case SYS_WRITE:                  /* Write to a file. */
-        f->eax = write (*(sp + 1), (void *) *(sp + 2), *(sp + 3));
+        f->eax = write (arg0, (void *) arg1, (unsigned) arg2);
         break;
     case SYS_SEEK:                   /* Change position in a file. */
-        seek (*(sp + 1), (unsigned) *(sp + 2));
+        seek (arg0, (unsigned) arg1);
         break;
     case SYS_TELL:                   /* Report current position in a file. */
-        f->eax = tell (*(sp + 1));
+        f->eax = tell (arg0);
         break;
     case SYS_CLOSE:                  /* Close a file. */
-        close (*(sp + 1));
+        close (arg0);
         break;
     }
 }
@@ -162,10 +190,12 @@ static void
 exit (int status)
 {
   /* Add the about-to-die process to the history list of exit statuses. */
-  add_status(thread_current()->tid, status);
-//  printf("exit:%d\n", thread_current()->tid);
-  sema_up(&get_process_sema(thread_current()->parent_tid)->sema_wait);
-  printf ("%s: exit(%d)\n", thread_current()->name, status);
+  struct thread *t = thread_current ();
+  add_status (t->tid, status);
+  struct process_sema *p_s = get_process_sema (t->parent_tid);
+  if (p_s != NULL)
+    sema_up (&p_s->sema_wait);
+  printf ("%s: exit(%d)\n", t->name, status);
   thread_exit ();
 }
 
@@ -199,7 +229,6 @@ exec (const char *cmd_line)
 static int
 wait (tid_t tid)
 {
-//  printf("wait:%d\n", tid);
   if (!is_child (tid) || is_waited_on (tid))
     return -1;
 
@@ -225,6 +254,8 @@ create (const char *file, unsigned initial_size)
 static bool
 remove (const char *file)
 {
+  if (syscall_user_memory (file) == NULL)
+    exit (-1);
   lock_acquire (&file_lock);
   bool success = filesys_remove (file);
   lock_release (&file_lock);
