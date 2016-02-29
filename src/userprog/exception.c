@@ -95,6 +95,7 @@ kill (struct intr_frame *f)
       file_close (exec_file);
       lock_release (&file_lock);
     }
+
   switch (f->cs)
     {
     case SEL_UCSEG:
@@ -161,6 +162,9 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+  if (user && syscall_user_memory (fault_addr) == NULL)
+    exit (-1);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

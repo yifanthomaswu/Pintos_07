@@ -35,12 +35,10 @@ struct list processes;
 static int fd;
 
 static void syscall_handler (struct intr_frame *);
-static void *syscall_user_memory (const void *vaddr);
 static int get_new_fd(void);
 static struct file_fd *get_file_fd (int fd);
 
 static void halt (void);
-static void exit (int status);
 tid_t exec (const char *cmd_line);
 static int wait (tid_t tid);
 static bool create(const char *file, unsigned initial_size);
@@ -78,13 +76,13 @@ syscall_handler (struct intr_frame *f)
     {
     case SYS_READ:
     case SYS_WRITE:
-      if (!is_user_vaddr (sp + 3))
+      if (syscall_user_memory (sp + 3) == NULL)
         exit (-1);
       else
         arg2 = *(sp + 3);
     case SYS_CREATE:
     case SYS_SEEK:
-      if (!is_user_vaddr (sp + 2))
+      if (syscall_user_memory (sp + 2) == NULL)
         exit (-1);
       else
         arg1 = *(sp + 2);
@@ -96,7 +94,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
     case SYS_TELL:
     case SYS_CLOSE:
-      if (!is_user_vaddr (sp + 1))
+      if (syscall_user_memory (sp + 1) == NULL)
         exit (-1);
       else
         arg0 = *(sp + 1);
@@ -146,7 +144,7 @@ syscall_handler (struct intr_frame *f)
     }
 }
 
-static void *
+void *
 syscall_user_memory (const void *vaddr)
 {
   if (is_user_vaddr (vaddr))
@@ -186,7 +184,7 @@ halt (void)
     NOT_REACHED();
 }
 
-static void
+void
 exit (int status)
 {
   /* Add the about-to-die process to the history list of exit statuses. */
