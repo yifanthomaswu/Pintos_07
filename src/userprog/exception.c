@@ -5,6 +5,7 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "filesys/file.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -87,7 +88,13 @@ kill (struct intr_frame *f)
   struct process_sema *p_s = get_process_sema (t->parent_tid);
   if (p_s != NULL)
     sema_up (&p_s->sema_wait);
-  sema_up(&get_process_sema(thread_current()->parent_tid)->sema_wait);
+  struct file * exec_file = t->exec_file;
+  if (exec_file != NULL)
+    {
+      lock_acquire (&file_lock);
+      file_close (exec_file);
+      lock_release (&file_lock);
+    }
   switch (f->cs)
     {
     case SEL_UCSEG:

@@ -45,12 +45,12 @@ tid_t exec (const char *cmd_line);
 static int wait (tid_t tid);
 static bool create(const char *file, unsigned initial_size);
 static bool remove (const char *file);
-static int open (const char *file);
 static int filesize (int fd);
 static int read (int fd, void *buffer, unsigned size);
 static int write (int fd, const void *buffer, unsigned size);
 static void seek (int fd, unsigned position);
 static unsigned tell (int fd);
+static int open (const char *file);
 static void close (int fd);
 
 void
@@ -196,6 +196,19 @@ exit (int status)
   if (p_s != NULL)
     sema_up (&p_s->sema_wait);
   printf ("%s: exit(%d)\n", t->name, status);
+  struct file * exec_file = t->exec_file;
+    if (exec_file != NULL)
+      {
+        lock_acquire (&file_lock);
+        file_close (exec_file);
+        lock_release (&file_lock);
+      }
+
+//  if (t->exec_file_fd != 0)
+//    {
+//      file_allow_write(&get_file_fd(t->exec_file_fd)->file);
+//      close(t->exec_file_fd);
+//    }
   thread_exit ();
 }
 
