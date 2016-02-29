@@ -163,6 +163,7 @@ exit (int status)
 {
   /* Add the about-to-die process to the history list of exit statuses. */
   add_status(thread_current()->tid, status);
+//  printf("exit:%d\n", thread_current()->tid);
   sema_up(&get_process_sema(thread_current()->parent_tid)->sema_wait);
   printf ("%s: exit(%d)\n", thread_current()->name, status);
   thread_exit ();
@@ -198,6 +199,7 @@ exec (const char *cmd_line)
 static int
 wait (tid_t tid)
 {
+//  printf("wait:%d\n", tid);
   if (!is_child (tid) || is_waited_on (tid))
     return -1;
 
