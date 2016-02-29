@@ -29,11 +29,14 @@ struct lock file_lock;
 /* The current free file descriptor available to a process. */
 /* Accessible through the get_new_fd() function. */
 static int fd_count;
-
 /* History of dead processes. */
 static struct list statuses;
 /* List of waiting processes on their children to die. */
 static struct list processes;
+
+static struct semaphore fd_count_sema;
+static struct semaphore statuses_sema;
+static struct semaphore processes_sema;
 
 static void syscall_handler (struct intr_frame *);
 static inline int get_new_fd (void);
@@ -58,13 +61,17 @@ static struct status *get_status (tid_t tid);
 void
 syscall_init (void)
 {
-  /* Initialise the used lists. */
-  list_init (&statuses);
-  list_init (&processes);
   /* Initialise the next available fd to 2; 0 and 1 reserved for STD[IN/OUT]. */
   fd_count = 2;
   /* Initialise the file system lock. */
   lock_init (&file_lock);
+  /* Initialise the used lists. */
+  list_init (&statuses);
+  list_init (&processes);
+
+  sema_init (&fd_count_sema, 1);
+  sema_init (&statuses_sema, 1);
+  sema_init (&processes_sema, 1);
   /* Register the system call handler on 0x30. */
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
@@ -300,7 +307,9 @@ open (const char *file)
       struct file_fd *file_fd = malloc (sizeof(struct file_fd));
       if (file_fd == NULL)
         return -1;
+      sema_down (&fd_count_sema);
       file_fd->fd = get_new_fd ();
+      sema_up (&fd_count_sema);
       int length = strlen (file) + 1;
       file_fd->file_name = malloc (length * sizeof(char));
       if (file_fd->file_name == NULL)
@@ -445,7 +454,9 @@ add_process_sema (tid_t tid)
       p_s->tid = tid;
       sema_init (&p_s->sema_wait, 0);
       sema_init (&p_s->sema_exec, 0);
+      sema_down (&processes_sema);
       list_push_front (&processes, &p_s->process_semaelem);
+      sema_up (&processes_sema);
       return p_s;
     }
   else
@@ -456,14 +467,19 @@ struct process_sema *
 get_process_sema (tid_t tid)
 {
   struct list_elem *e;
+  sema_down (&processes_sema);
   for (e = list_begin (&processes); e != list_end (&processes);
        e = list_next (e))
     {
       struct process_sema *p_s = list_entry (e, struct process_sema,
                                              process_semaelem);
       if (p_s->tid == tid)
-        return p_s;
+        {
+          sema_up (&processes_sema);
+          return p_s;
+        }
     }
+  sema_up (&processes_sema);
   return NULL;
 }
 
@@ -487,20 +503,27 @@ add_status (tid_t tid, int status)
   new_status->tid = tid;
   new_status->waited_on = false;
   new_status->status = status;
+  sema_down (&statuses_sema);
   list_push_front (&statuses, &new_status->statuselem);
+  sema_up (&statuses_sema);
 }
 
 static struct status *
 get_status (tid_t tid)
 {
   struct list_elem *e;
+  sema_down (&statuses_sema);
   for (e = list_begin (&statuses); e != list_end (&statuses);
        e = list_next (e))
     {
       struct status *s = list_entry (e, struct status, statuselem);
       if (s->tid == tid)
-        return s;
+        {
+          sema_up (&statuses_sema);
+          return s;
+        }
     }
+  sema_up (&statuses_sema);
   return NULL;
 }
 
