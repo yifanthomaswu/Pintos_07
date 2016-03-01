@@ -51,6 +51,7 @@ process_execute (const char *file_name)
   strlcpy (fn_copy_tmp, file_name, PGSIZE);
   char *token, *save_ptr;
   token = strtok_r (fn_copy_tmp, " ", &save_ptr);
+  /* The first token which is the executable name is passed as thread name. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   palloc_free_page (fn_copy_tmp);
   if (tid == TID_ERROR)
@@ -104,6 +105,8 @@ start_process (void *file_name_)
       if (i == 0)
         {
           success = load (token, &if_.eip, &if_.esp);
+          /* Wakes up the parent thread if there is one and informs
+             whether the load is success or not. */
           struct process_sema *p_s = get_process_sema (
               thread_current ()->parent_tid);
           if (p_s != NULL)
@@ -111,6 +114,7 @@ start_process (void *file_name_)
               p_s->load_fail = !success;
               sema_up (&p_s->sema_exec);
             }
+          /* If load failed, quit without set up the stack. */
           if (!success)
             {
               palloc_free_page (file_name);
@@ -144,7 +148,7 @@ start_process (void *file_name_)
   if_.esp -= 4;
   *((uint32_t *) if_.esp) = count;
 
-  /* Pushes fake return address. */
+  /* Pushes fake return address 0. */
   if_.esp -= 4;
 
   /* If load failed, quit. */
@@ -177,20 +181,21 @@ process_wait (tid_t child_tid)
   if (!is_child (child_tid) || is_dead (child_tid))
     return -1;
   struct thread *t = thread_current ();
+  /* Block parent thread while waiting for child to exit. */
   sema_init(&add_process_sema (t->tid)->sema_wait, 0);
   sema_down (&add_process_sema (t->tid)->sema_wait);
-  /* Set waited on to true, a process can be waited on only once. */
+  /* Set waited_on to true, a process can be waited on only once. */
   set_waited_on (child_tid);
   return get_exit_code (child_tid);
 }
 
-/* Returns true if the given child_tid is a valid child of the current process. */
+/* Returns true if the given child_tid is a valid child of
+   the current process. */
 bool
 is_child (tid_t child_tid)
 {
   struct list *children = &thread_current ()->children;
   struct list_elem *e;
-  /* Search for child_tid in list of child tids. */
   for (e = list_begin (children); e != list_end (children); e = list_next (e))
     {
       struct child_tid *t = list_entry (e, struct child_tid, childtidelem);
@@ -209,15 +214,14 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  /* Frees all child to tid mappings a process holds. */
+  /* Frees all child tids a process holds. */
   while (!list_empty (&cur->children))
     {
       struct list_elem *e = list_pop_front (&cur->children);
       struct child_tid *c = list_entry (e, struct child_tid, childtidelem);
       free (c);
     }
-
-  /* Frees all flies to fd mappings a process holds. */
+  /* Frees all files to fd mappings a process holds. */
   while (!list_empty (&cur->files))
     {
       struct list_elem *e = list_pop_front (&cur->files);
@@ -226,6 +230,7 @@ process_exit (void)
       free (f->file_name);
       free (f);
     }
+  /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
 
   /* Destroy the current process's page directory and switch back
@@ -354,6 +359,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Open executable file. */
   lock_acquire (&file_lock);
   file = filesys_open (file_name);
+  /* Deny writing to the executable file after successfully opening it. */
   if (file != NULL)
     file_deny_write(file);
   t->exec_file = file;

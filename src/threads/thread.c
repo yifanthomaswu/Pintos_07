@@ -209,7 +209,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  /* Set the child's parent_tid filed to parent's tid. */
+  /* Set the child's parent_tid field to its parent's tid. */
   t->parent_tid = thread_current ()->tid;
   struct child_tid *child = malloc (sizeof(struct child_tid));
   if (child == NULL)
@@ -220,7 +220,7 @@ thread_create (const char *name, int priority,
       return TID_ERROR;
     }
   child->tid = t->tid;
-  /* Add child process to list of current process. */
+  /* Add child process to the list of children of current process. */
   list_insert_ordered (&thread_current ()->children, &child->childtidelem,
                        list_less_child, NULL);
 
@@ -232,6 +232,8 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+/* Comparison function used to insert child tid into children list in
+   ascending order of tid value. */
 static bool
 list_less_child (const struct list_elem *a, const struct list_elem *b,
                  void *aux UNUSED)

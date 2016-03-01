@@ -32,7 +32,7 @@ struct child_tid
     tid_t tid;
   };
 
-/* Struct used to keep track of open files to their fds. */
+/* Struct used to keep track of open files and their fds. */
 struct file_fd
   {
     struct list_elem filefdelem;
@@ -120,7 +120,7 @@ struct thread
     struct list children;          /* List of children of the process. */
     tid_t parent_tid;              /* Tid of the parent of the process. */
     struct list files;             /* List of file_fd to track open files. */
-    struct file *exec_file; 	   /* Holds file pointer to file being executed. */
+    struct file *exec_file;        /* File being executed by the process. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
