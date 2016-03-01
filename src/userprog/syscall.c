@@ -44,7 +44,7 @@ static struct file_fd *get_file_fd (int fd);
 
 static void halt (void);
 static void exit (int status);
-tid_t exec (const char *cmd_line);
+static tid_t exec (const char *cmd_line);
 static int wait (tid_t tid);
 static bool create (const char *file, unsigned initial_size);
 static bool remove (const char *file);
@@ -255,7 +255,7 @@ pre_exit (int status)
 }
 
 /* Sets up a new child process, if fails, frees any used resources. */
-tid_t
+static tid_t
 exec (const char *cmd_line)
 {
   if (syscall_user_memory (cmd_line) == NULL)
