@@ -33,7 +33,7 @@ static int fd_count;
 static struct list statuses;
 /* List of waiting processes on their children to die. */
 static struct list processes;
-
+/* Semaphores to synchronise access to above variables */
 static struct semaphore fd_count_sema;
 static struct semaphore statuses_sema;
 static struct semaphore processes_sema;
@@ -91,17 +91,22 @@ syscall_handler (struct intr_frame *f)
   uint32_t *sp = f->esp;
   if (syscall_user_memory (sp) == NULL)
     exit (-1);
+  /* arg0, arg1 & arg2 hold the passed arguments. */
   uint32_t arg0 = 0, arg1 = 0, arg2 = 0;
   switch (*sp)
     {
     case SYS_READ:
     case SYS_WRITE:
+      /* Only read and write have a third argument (arg2). Case fallthrough
+         allows to avoid code duplication */
       if (syscall_user_memory (sp + 3) == NULL)
         exit (-1);
       else
         arg2 = *(sp + 3);
     case SYS_CREATE:
     case SYS_SEEK:
+      /* Create and seek both have 2 arguments, so they start the fallthrough
+         here */
       if (syscall_user_memory (sp + 2) == NULL)
         exit (-1);
       else
@@ -114,11 +119,15 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
     case SYS_TELL:
     case SYS_CLOSE:
+      /* All other syscalls have only one argument, so arg0 is the only one
+         needed for them. All syscalls come here, because of case fallthrough. */
       if (syscall_user_memory (sp + 1) == NULL)
         exit (-1);
       else
         arg0 = *(sp + 1);
     }
+  /* This is the switch that actually calls the functions corresponding to the
+     syscalls, providing the arguments casted depending on the functions needs. */
   switch (*sp)
     {
     case SYS_HALT:                   /* Halt the operating system. */
@@ -164,6 +173,8 @@ syscall_handler (struct intr_frame *f)
     }
 }
 
+/* Checks if a virtual address lies in the user address space.
+   Returns NULL otherwise. */
 void *
 syscall_user_memory (const void *vaddr)
 {
@@ -235,6 +246,7 @@ pre_exit (int status)
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
 }
 
+/* Sets up a new process with corresponding process_sema. */
 tid_t
 exec (const char *cmd_line)
 {
@@ -267,6 +279,9 @@ exec (const char *cmd_line)
   return new_tid;
 }
 
+/* Delegates to process_wait in process.c in normal case. If process to be
+   waited on is not a child of the current process or is already waited on,
+   returns -1. */
 static int
 wait (tid_t tid)
 {
@@ -281,6 +296,7 @@ wait (tid_t tid)
   return process_wait (tid);
 }
 
+/* Creates a new file by delegating to filesys_create in filesys.c */
 static bool
 create (const char *file, unsigned initial_size)
 {
@@ -292,6 +308,7 @@ create (const char *file, unsigned initial_size)
   return success;
 }
 
+/* Removes a file by delegating to filesys_remove in filesys.c */
 static bool
 remove (const char *file)
 {
@@ -303,6 +320,9 @@ remove (const char *file)
   return success;
 }
 
+/* Opens a file by delegating to filesys_open in filesys.c. Sets up a new
+   file_fd which is added to the list of files for current process. Returns
+   file descriptor. */
 static int
 open (const char *file)
 {
@@ -336,6 +356,7 @@ open (const char *file)
     }
 }
 
+/* Returns size of file by delegating to file_length in file.c */
 static int
 filesize (int fd)
 {
@@ -356,6 +377,8 @@ filesize (int fd)
     }
 }
 
+/* Reads either from standard input using input_getc or from file using
+   file_read from file.c */
 static int
 read (int fd, void *buffer, unsigned size)
 {
@@ -363,6 +386,7 @@ read (int fd, void *buffer, unsigned size)
     exit (-1);
   if (fd == STDIN_FILENO)
     {
+      /* Read from standard input */
       uint8_t *char_buffer = buffer;
       int i;
       for (i = 0; i < (int) size; i++)
@@ -377,6 +401,7 @@ read (int fd, void *buffer, unsigned size)
     return -1;
   else
     {
+      /* Read from file */
       struct file_fd *file_fd = get_file_fd (fd);
       if (file_fd == NULL)
         return -1;
@@ -390,6 +415,8 @@ read (int fd, void *buffer, unsigned size)
     }
 }
 
+/* Writes either to standard output using putbuf or to file using write_file
+   from file.c. */
 static int
 write (int fd, const void *buffer, unsigned size)
 {
@@ -397,6 +424,7 @@ write (int fd, const void *buffer, unsigned size)
     exit (-1);
   if (fd == STDOUT_FILENO)
     {
+      /* Write to standard output */
       putbuf (buffer, size);
       return size;
     }
@@ -404,6 +432,7 @@ write (int fd, const void *buffer, unsigned size)
     return 0;
   else
     {
+      /* Write to file */
       struct file_fd *file_fd = get_file_fd (fd);
       if (file_fd == NULL)
         return 0;
@@ -417,6 +446,7 @@ write (int fd, const void *buffer, unsigned size)
     }
 }
 
+/* Seeks position in file by delegating to file_seek in file.c. */
 static void
 seek (int fd, unsigned position)
 {
@@ -429,6 +459,7 @@ seek (int fd, unsigned position)
     }
 }
 
+/* Returns current position in file by delegating to file_tell in file.c. */
 static unsigned
 tell (int fd)
 {
@@ -439,6 +470,8 @@ tell (int fd)
   return p;
 }
 
+/* Closes file by delegating to file_close in file.c. Removes file from list
+   of files of the current process. */
 static void
 close (int fd)
 {
@@ -454,6 +487,8 @@ close (int fd)
     }
 }
 
+/* Sets up a new process_sema by initialising its members and inserting itself
+   into the list of processes. */
 struct process_sema *
 add_process_sema (tid_t tid)
 {
@@ -476,6 +511,7 @@ add_process_sema (tid_t tid)
     return p_s;
 }
 
+/* Returns process_sema corresponding to the current process. */
 struct process_sema *
 get_process_sema (tid_t tid)
 {
@@ -498,6 +534,7 @@ get_process_sema (tid_t tid)
   return NULL;
 }
 
+/* Removes process_sema from the list of processes and frees memory. */
 void
 remove_process_sema (tid_t tid)
 {
