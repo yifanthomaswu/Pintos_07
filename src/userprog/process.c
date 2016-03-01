@@ -182,7 +182,7 @@ process_wait (tid_t child_tid)
     return -1;
   struct thread *t = thread_current ();
   /* Block parent thread while waiting for child to exit. */
-  sema_init(&add_process_sema (t->tid)->sema_wait, 0);
+  sema_init (&add_process_sema (t->tid)->sema_wait, 0);
   sema_down (&add_process_sema (t->tid)->sema_wait);
   /* Set waited_on to true, a process can be waited on only once. */
   set_waited_on (child_tid);
@@ -190,7 +190,7 @@ process_wait (tid_t child_tid)
 }
 
 /* Returns true if the given child_tid is a valid child of
-   the current process. */
+   the current process, false otherwise. */
 bool
 is_child (tid_t child_tid)
 {
@@ -361,7 +361,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file = filesys_open (file_name);
   /* Deny writing to the executable file after successfully opening it. */
   if (file != NULL)
-    file_deny_write(file);
+    file_deny_write (file);
   t->exec_file = file;
   if (file == NULL) 
     {

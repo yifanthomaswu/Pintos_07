@@ -82,6 +82,8 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
+
+  /* Extra steps needed before killing the current thread. */
   pre_exit (-1);
 
   switch (f->cs)
@@ -151,6 +153,8 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+  /* Exit with -1 if page fault is due to user program made an
+     unallowed memory access. */
   if (user && syscall_user_memory (fault_addr) == NULL)
     {
       pre_exit (-1);

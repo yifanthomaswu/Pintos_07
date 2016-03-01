@@ -7,14 +7,17 @@
 /* Lock used to synchronise any access to the file system. */
 extern struct lock file_lock;
 
-/* Struct used to map a process tid to the semaphore it uses to wait on process. */
+/* Struct used to map a process tid to related semaphores. */
 struct process_sema
 {
   struct list_elem process_semaelem;
   tid_t tid;
+  /* Inform parent whether the child process is successfully created. */
   bool load_fail;
-  struct semaphore sema_wait;
+  /* Used to synchronise parent and child during exec system call. */
   struct semaphore sema_exec;
+  /* Used to synchronise parent and child during wait system call. */
+  struct semaphore sema_wait;
 };
 
 void syscall_init (void);

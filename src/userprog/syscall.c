@@ -26,12 +26,12 @@ struct status
 
 /* Lock used to synchronise any access to the file system. */
 struct lock file_lock;
-/* The current free file descriptor available to a process. */
-/* Accessible through the get_new_fd() function. */
+/* The current free file descriptor available to a process.
+   Accessible through the get_new_fd () function. */
 static int fd_count;
 /* History of dead processes. */
 static struct list statuses;
-/* List of waiting processes on their children to die. */
+/* List of semaphores related to running process. */
 static struct list processes;
 /* Semaphores to synchronise access to above variables */
 static struct semaphore fd_count_sema;
@@ -67,17 +67,19 @@ static bool list_less_process (const struct list_elem *a,
                                const struct list_elem *b,
                                void *aux UNUSED);
 
+/* Initialise and register the system call handler. */
 void
 syscall_init (void)
 {
-  /* Initialise the next available fd to 2; 0 and 1 reserved for STD[IN/OUT]. */
+  /* Initialise the next available fd to 2;
+     0 and 1 reserved for STD[IN/OUT]. */
   fd_count = 2;
   /* Initialise the file system lock. */
   lock_init (&file_lock);
-  /* Initialise the used lists. */
+  /* Initialise the lists. */
   list_init (&statuses);
   list_init (&processes);
-
+  /* Initialise the semaphores. */
   sema_init (&fd_count_sema, 1);
   sema_init (&statuses_sema, 1);
   sema_init (&processes_sema, 1);
@@ -85,28 +87,31 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+/* Safety checking for system call arguments and redirecting system calls
+   to corresponding functions. */
 static void
 syscall_handler (struct intr_frame *f)
 {
   uint32_t *sp = f->esp;
+  /* Memory accessing check for system call number. */
   if (syscall_user_memory (sp) == NULL)
     exit (-1);
-  /* arg0, arg1 & arg2 hold the passed arguments. */
+  /* Variables hold the passed arguments. */
   uint32_t arg0 = 0, arg1 = 0, arg2 = 0;
+  /* Memory accessing check for system call arguments. */
   switch (*sp)
     {
     case SYS_READ:
     case SYS_WRITE:
-      /* Only read and write have a third argument (arg2). Case fallthrough
-         allows to avoid code duplication */
+      /* Only read and write have a third argument (arg2).
+         Case fallthrough avoids code duplications. */
       if (syscall_user_memory (sp + 3) == NULL)
         exit (-1);
       else
         arg2 = *(sp + 3);
     case SYS_CREATE:
     case SYS_SEEK:
-      /* Create and seek both have 2 arguments, so they start the fallthrough
-         here */
+      /* Create and seek both have two arguments. */
       if (syscall_user_memory (sp + 2) == NULL)
         exit (-1);
       else
@@ -119,15 +124,14 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
     case SYS_TELL:
     case SYS_CLOSE:
-      /* All other syscalls have only one argument, so arg0 is the only one
-         needed for them. All syscalls come here, because of case fallthrough. */
+      /* Other syscalls with one argument. */
       if (syscall_user_memory (sp + 1) == NULL)
         exit (-1);
       else
         arg0 = *(sp + 1);
     }
-  /* This is the switch that actually calls the functions corresponding to the
-     syscalls, providing the arguments casted depending on the functions needs. */
+  /* Calls functions corresponding to the system call number,
+     providing casted arguments depending on the function declarations. */
   switch (*sp)
     {
     case SYS_HALT:                   /* Halt the operating system. */
@@ -173,7 +177,7 @@ syscall_handler (struct intr_frame *f)
     }
 }
 
-/* Checks if a virtual address lies in the user address space.
+/* Checks if a virtual address lies in the user address space and is mapped.
    Returns NULL otherwise. */
 void *
 syscall_user_memory (const void *vaddr)
@@ -191,8 +195,8 @@ get_new_fd (void)
   return fd_count++;
 }
 
-/* Returns file pointer to the file referenced by fd. */
-/* If no file is open through fd, returns NULL. */
+/* Returns the file_fd struct referenced by fd.
+   If no file is open through fd by the current process, returns NULL. */
 static struct file_fd *
 get_file_fd (int fd)
 {
@@ -210,12 +214,15 @@ get_file_fd (int fd)
   return NULL;
 }
 
+/* Power down the machine. */
 static void
 halt (void)
 {
   shutdown_power_off ();
 }
 
+/* Records exit code, informs its exiting, close its executable file and
+   print a message before exit a thread. */
 static void
 exit (int status)
 {
@@ -223,19 +230,20 @@ exit (int status)
   thread_exit ();
 }
 
+/* Helper function used before exit a thread. */
 void
 pre_exit (int status)
 {
   struct thread *t = thread_current ();
-  /* An exception has exit code -1, add it to history of processes. */
+  /* Add the exit code of current process to history of dead processes. */
   add_status (t->tid, status);
 
-  /* Get the semaphore struct of the process, if not null up the wait semaphore. */
+  /* Get the semaphores of the process, if exists, up the wait semaphore. */
   struct process_sema *p_s = get_process_sema (t->parent_tid);
   if (p_s != NULL)
     sema_up (&p_s->sema_wait);
 
-  /* Get the processes executable file, if exists, close it. */
+  /* Get the process' executable file, if exists, close it. */
   struct file * exec_file = t->exec_file;
   if (exec_file != NULL)
     {
@@ -246,7 +254,7 @@ pre_exit (int status)
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
 }
 
-/* Sets up a new process with corresponding process_sema. */
+/* Sets up a new child process, if fails, frees any used resources. */
 tid_t
 exec (const char *cmd_line)
 {
@@ -257,7 +265,9 @@ exec (const char *cmd_line)
     {
       struct thread *t = thread_current ();
       struct process_sema *p_s = add_process_sema (t->tid);
+      /* Parent process waits for the result of creating new process. */
       sema_down (&p_s->sema_exec);
+      /* Frees used resources if new process cannot be created. */
       if (p_s->load_fail)
         {
           struct list_elem *e;
@@ -287,7 +297,6 @@ wait (tid_t tid)
 {
   if (!is_child (tid) || is_waited_on (tid))
     return -1;
-
   if (is_dead (tid))
     {
       set_waited_on (tid);
@@ -296,7 +305,7 @@ wait (tid_t tid)
   return process_wait (tid);
 }
 
-/* Creates a new file by delegating to filesys_create in filesys.c */
+/* Creates a new file by delegating to filesys_create in filesys.c. */
 static bool
 create (const char *file, unsigned initial_size)
 {
@@ -308,7 +317,7 @@ create (const char *file, unsigned initial_size)
   return success;
 }
 
-/* Removes a file by delegating to filesys_remove in filesys.c */
+/* Removes a file by delegating to filesys_remove in filesys.c. */
 static bool
 remove (const char *file)
 {
@@ -321,8 +330,8 @@ remove (const char *file)
 }
 
 /* Opens a file by delegating to filesys_open in filesys.c. Sets up a new
-   file_fd which is added to the list of files for current process. Returns
-   file descriptor. */
+   file_fd which is added to the list of files of the current process.
+   Returns the file descriptor. */
 static int
 open (const char *file)
 {
@@ -356,7 +365,7 @@ open (const char *file)
     }
 }
 
-/* Returns size of file by delegating to file_length in file.c */
+/* Returns size of file by delegating to file_length in file.c. */
 static int
 filesize (int fd)
 {
@@ -377,8 +386,8 @@ filesize (int fd)
     }
 }
 
-/* Reads either from standard input using input_getc or from file using
-   file_read from file.c */
+/* Reads either from standard input using input_getc or from a file using
+   file_read from file.c. */
 static int
 read (int fd, void *buffer, unsigned size)
 {
@@ -386,7 +395,7 @@ read (int fd, void *buffer, unsigned size)
     exit (-1);
   if (fd == STDIN_FILENO)
     {
-      /* Read from standard input */
+      /* Reads from standard input. */
       uint8_t *char_buffer = buffer;
       int i;
       for (i = 0; i < (int) size; i++)
@@ -401,7 +410,7 @@ read (int fd, void *buffer, unsigned size)
     return -1;
   else
     {
-      /* Read from file */
+      /* Reads from a file. */
       struct file_fd *file_fd = get_file_fd (fd);
       if (file_fd == NULL)
         return -1;
@@ -415,8 +424,8 @@ read (int fd, void *buffer, unsigned size)
     }
 }
 
-/* Writes either to standard output using putbuf or to file using write_file
-   from file.c. */
+/* Writes either to standard output using putbuf or to a file using
+   write_file from file.c. */
 static int
 write (int fd, const void *buffer, unsigned size)
 {
@@ -424,7 +433,7 @@ write (int fd, const void *buffer, unsigned size)
     exit (-1);
   if (fd == STDOUT_FILENO)
     {
-      /* Write to standard output */
+      /* Writes to standard output. */
       putbuf (buffer, size);
       return size;
     }
@@ -432,7 +441,7 @@ write (int fd, const void *buffer, unsigned size)
     return 0;
   else
     {
-      /* Write to file */
+      /* Writes to a file. */
       struct file_fd *file_fd = get_file_fd (fd);
       if (file_fd == NULL)
         return 0;
@@ -487,8 +496,8 @@ close (int fd)
     }
 }
 
-/* Sets up a new process_sema by initialising its members and inserting itself
-   into the list of processes. */
+/* Returns process_sema corresponding to the given tid if it already exisits.
+   Otherwise, sets it up and returns it. */
 struct process_sema *
 add_process_sema (tid_t tid)
 {
@@ -511,7 +520,7 @@ add_process_sema (tid_t tid)
     return p_s;
 }
 
-/* Returns process_sema corresponding to the current process. */
+/* Returns process_sema corresponding to the given tid. */
 struct process_sema *
 get_process_sema (tid_t tid)
 {
@@ -534,7 +543,7 @@ get_process_sema (tid_t tid)
   return NULL;
 }
 
-/* Removes process_sema from the list of processes and frees memory. */
+/* Removes process_sema corresponding to the given tid and frees it. */
 void
 remove_process_sema (tid_t tid)
 {
@@ -546,6 +555,8 @@ remove_process_sema (tid_t tid)
     }
 }
 
+/* Adds the given exit code with corresponding tid to history
+   of dead processes. */
 void
 add_status (tid_t tid, int status)
 {
@@ -561,6 +572,8 @@ add_status (tid_t tid, int status)
   sema_up (&statuses_sema);
 }
 
+/* Helper function used to get status struct from the history
+   of dead processes corresponding to the given tid. */
 static struct status *
 get_status (tid_t tid)
 {
@@ -582,6 +595,8 @@ get_status (tid_t tid)
   return NULL;
 }
 
+/* Returns the exit code corresponding to the given tid.
+   Must not be called on a process tid which is not dead.*/
 int
 get_exit_code (tid_t tid)
 {
@@ -590,7 +605,8 @@ get_exit_code (tid_t tid)
     return s->status;
   NOT_REACHED ();
 }
-
+/* Returns true if the process with the given tid has already been waited on,
+   false otherwise.*/
 bool
 is_waited_on (tid_t tid)
 {
@@ -601,6 +617,7 @@ is_waited_on (tid_t tid)
     return false;
 }
 
+/* Sets the process with the given tid to be haven already been waited on. */
 void
 set_waited_on (tid_t tid)
 {
@@ -609,12 +626,15 @@ set_waited_on (tid_t tid)
     s->waited_on = true;
 }
 
+/* Returns true if the process with the given tid is dead, false otherwise. */
 bool
 is_dead (tid_t tid)
 {
   return get_status (tid) != NULL;
 }
 
+/* Comparison function used to insert file_fd into files list in
+   ascending order of fd value. */
 static bool
 list_less_file (const struct list_elem *a, const struct list_elem *b,
                 void *aux UNUSED)
@@ -623,6 +643,8 @@ list_less_file (const struct list_elem *a, const struct list_elem *b,
       list_entry (b, struct file_fd, filefdelem)->fd;
 }
 
+/* Comparison function used to insert status into statuses list in
+   ascending order of tid value. */
 static bool
 list_less_status (const struct list_elem *a, const struct list_elem *b,
                   void *aux UNUSED)
@@ -631,6 +653,8 @@ list_less_status (const struct list_elem *a, const struct list_elem *b,
       list_entry (b, struct status, statuselem)->tid;
 }
 
+/* Comparison function used to insert process_sema into processes list in
+   ascending order of tid value. */
 static bool
 list_less_process (const struct list_elem *a, const struct list_elem *b,
                    void *aux UNUSED)
