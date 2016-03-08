@@ -224,6 +224,8 @@ thread_create (const char *name, int priority,
   list_insert_ordered (&thread_current ()->children, &child->childtidelem,
                        list_less_child, NULL);
 
+  add_status(tid);
+
   intr_set_level (old_level);
 
   /* Add to run queue. */

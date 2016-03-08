@@ -7,6 +7,8 @@
 /* Lock used to synchronise any access to the file system. */
 extern struct lock file_lock;
 
+struct list statuses;
+
 /* Struct used to map a process tid to related semaphores. */
 struct process_sema
 {
@@ -27,10 +29,11 @@ void pre_exit (int status);
 struct process_sema *add_process_sema (tid_t tid);
 struct process_sema *get_process_sema (tid_t tid);
 void remove_process_sema (tid_t tid);
-void add_status (tid_t tid, int status);
+void add_status (tid_t tid);
+void set_status (tid_t tid, int status);
+void remove_status(tid_t tid);
 int get_exit_code (tid_t tid);
 bool is_waited_on (tid_t tid);
-void set_waited_on (tid_t tid);
 bool is_dead (tid_t tid);
 
 #endif /* userprog/syscall.h */

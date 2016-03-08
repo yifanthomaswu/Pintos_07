@@ -20,8 +20,7 @@ struct status
     struct list_elem statuselem;
     tid_t tid;
     int status;
-    /* A process can be waited on only once. */
-    bool waited_on;
+    bool dead;
   };
 
 /* Lock used to synchronise any access to the file system. */
@@ -30,7 +29,7 @@ struct lock file_lock;
    Accessible through the get_new_fd () function. */
 static int fd_count;
 /* History of dead processes. */
-static struct list statuses;
+
 /* List of semaphores related to running process. */
 static struct list processes;
 /* Semaphores to synchronise access to above variables */
@@ -240,7 +239,7 @@ pre_exit (int status)
 {
   struct thread *t = thread_current ();
   /* Add the exit code of current process to history of dead processes. */
-  add_status (t->tid, status);
+  set_status (t->tid, status);
 
   /* Get the semaphores of the process, if exists, up the wait semaphore. */
   struct process_sema *p_s = get_process_sema (t->parent_tid);
@@ -303,8 +302,9 @@ wait (tid_t tid)
     return -1;
   if (is_dead (tid))
     {
-      set_waited_on (tid);
-      return get_exit_code (tid);
+      int status = get_exit_code (tid);
+      remove_status(tid);
+      return status;
     }
   return process_wait (tid);
 }
@@ -552,7 +552,9 @@ remove_process_sema (tid_t tid)
   struct process_sema *p_s = get_process_sema (tid);
   if (p_s != NULL)
     {
+      lock_acquire (&processes_lock);
       list_remove (&p_s->process_semaelem);
+      lock_release (&processes_lock);
       free (p_s);
     }
 }
@@ -560,18 +562,30 @@ remove_process_sema (tid_t tid)
 /* Adds the given exit code with corresponding tid to history
    of dead processes. */
 void
-add_status (tid_t tid, int status)
+add_status (tid_t tid)
 {
   struct status *new_status = malloc (sizeof(struct status));
   if (new_status == NULL)
     exit (-1);
   new_status->tid = tid;
-  new_status->waited_on = false;
-  new_status->status = status;
+  new_status->dead = false;
   lock_acquire(&statuses_lock);
   list_insert_ordered (&statuses, &new_status->statuselem, list_less_status,
                        NULL);
   lock_release(&statuses_lock);
+}
+
+void
+set_status (tid_t tid, int status)
+{
+  struct status *s = get_status (tid);
+    if (s != NULL)
+      {
+        lock_acquire (&statuses_lock);
+        s->status = status;
+        s->dead = true;
+        lock_release (&statuses_lock);
+      }
 }
 
 /* Helper function used to get status struct from the history
@@ -597,6 +611,19 @@ get_status (tid_t tid)
   return NULL;
 }
 
+void
+remove_status(tid_t tid)
+{
+  struct status *s = get_status (tid);
+    if (s != NULL)
+      {
+        lock_acquire (&statuses_lock);
+        list_remove (&s->statuselem);
+        lock_release (&statuses_lock);
+        free (s);
+      }
+}
+
 /* Returns the exit code corresponding to the given tid.
    Must not be called on a process tid which is not dead.*/
 int
@@ -613,26 +640,18 @@ bool
 is_waited_on (tid_t tid)
 {
   struct status *s = get_status (tid);
-  if (s != NULL)
-    return s->waited_on;
-  else
-    return false;
-}
-
-/* Sets the process with the given tid to be haven already been waited on. */
-void
-set_waited_on (tid_t tid)
-{
-  struct status *s = get_status (tid);
-  if (s != NULL)
-    s->waited_on = true;
+  return s == NULL;
 }
 
 /* Returns true if the process with the given tid is dead, false otherwise. */
 bool
 is_dead (tid_t tid)
 {
-  return get_status (tid) != NULL;
+  struct status *s = get_status(tid);
+  if (s == NULL)
+    return true;
+  else
+    return s->dead;
 }
 
 /* Comparison function used to insert file_fd into files list in

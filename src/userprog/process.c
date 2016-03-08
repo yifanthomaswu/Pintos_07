@@ -94,6 +94,8 @@ start_process (void *file_name_)
   while (*file_name++);
   file_name = file_name_;
 
+  int limit = PGSIZE - ((count + 5) * 4);
+
   /* Pushes arguments onto stack and recored their addresses on stack. */
   uint32_t address[count];
   char *token, *save_ptr;
@@ -122,6 +124,13 @@ start_process (void *file_name_)
             }
         }
       int length = strlen (token) + 1;
+      limit -= length;
+      if (limit <= 0)
+	{
+	  palloc_free_page (file_name);
+	  thread_exit ();
+	}
+
       if_.esp -= length;
       memcpy (if_.esp, token, length);
       address[i] = (uint32_t) if_.esp;
@@ -185,8 +194,9 @@ process_wait (tid_t child_tid)
   sema_init (&add_process_sema (t->tid)->sema_wait, 0);
   sema_down (&add_process_sema (t->tid)->sema_wait);
   /* Set waited_on to true, a process can be waited on only once. */
-  set_waited_on (child_tid);
-  return get_exit_code (child_tid);
+  int status = get_exit_code (child_tid);
+  remove_status(child_tid);
+  return status;
 }
 
 /* Returns true if the given child_tid is a valid child of
@@ -214,11 +224,15 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+//  printf("size of status list before: %d\n", list_size(&statuses));
+
   /* Frees all child tids a process holds. */
   while (!list_empty (&cur->children))
     {
       struct list_elem *e = list_pop_front (&cur->children);
       struct child_tid *c = list_entry (e, struct child_tid, childtidelem);
+//      if (is_dead(c->tid))
+	remove_status(c->tid);
       free (c);
     }
   /* Frees all files to fd mappings a process holds. */
@@ -232,6 +246,11 @@ process_exit (void)
     }
   /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
+
+//  if (is_dead(cur->parent_tid))
+//    remove_status(cur->tid);
+
+//  printf("size of status list after: %d\n", list_size(&statuses));
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
