@@ -34,9 +34,9 @@ static struct list statuses;
 /* List of semaphores related to running process. */
 static struct list processes;
 /* Semaphores to synchronise access to above variables */
-static struct semaphore fd_count_sema;
-static struct semaphore statuses_sema;
-static struct semaphore processes_sema;
+static struct lock fd_count_lock;
+static struct lock statuses_lock;
+static struct lock processes_lock;
 
 static void syscall_handler (struct intr_frame *);
 static inline int get_new_fd (void);
@@ -80,9 +80,9 @@ syscall_init (void)
   list_init (&statuses);
   list_init (&processes);
   /* Initialise the semaphores. */
-  sema_init (&fd_count_sema, 1);
-  sema_init (&statuses_sema, 1);
-  sema_init (&processes_sema, 1);
+  lock_init (&fd_count_lock);
+  lock_init (&statuses_lock);
+  lock_init (&processes_lock);
   /* Register the system call handler on 0x30. */
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
@@ -192,7 +192,11 @@ syscall_user_memory (const void *vaddr)
 static inline int
 get_new_fd (void)
 {
-  return fd_count++;
+  int fd;
+  lock_acquire(&fd_count_lock);
+  fd = fd_count++;
+  lock_release(&fd_count_lock);
+  return fd;
 }
 
 /* Returns the file_fd struct referenced by fd.
@@ -347,9 +351,7 @@ open (const char *file)
       struct file_fd *file_fd = malloc (sizeof(struct file_fd));
       if (file_fd == NULL)
         return -1;
-      sema_down (&fd_count_sema);
       file_fd->fd = get_new_fd ();
-      sema_up (&fd_count_sema);
       int length = strlen (file) + 1;
       file_fd->file_name = malloc (length * sizeof(char));
       if (file_fd->file_name == NULL)
@@ -510,10 +512,10 @@ add_process_sema (tid_t tid)
       p_s->tid = tid;
       sema_init (&p_s->sema_wait, 0);
       sema_init (&p_s->sema_exec, 0);
-      sema_down (&processes_sema);
+      lock_acquire(&processes_lock);
       list_insert_ordered (&processes, &p_s->process_semaelem,
                            list_less_process, NULL);
-      sema_up (&processes_sema);
+      lock_release (&processes_lock);
       return p_s;
     }
   else
@@ -525,7 +527,7 @@ struct process_sema *
 get_process_sema (tid_t tid)
 {
   struct list_elem *e;
-  sema_down (&processes_sema);
+  lock_acquire(&processes_lock);
   for (e = list_begin (&processes); e != list_end (&processes);
        e = list_next (e))
     {
@@ -533,13 +535,13 @@ get_process_sema (tid_t tid)
                                              process_semaelem);
       if (p_s->tid == tid)
         {
-          sema_up (&processes_sema);
+          lock_release (&processes_lock);
           return p_s;
         }
       else if (p_s->tid > tid)
         break;
     }
-  sema_up (&processes_sema);
+  lock_release (&processes_lock);
   return NULL;
 }
 
@@ -566,10 +568,10 @@ add_status (tid_t tid, int status)
   new_status->tid = tid;
   new_status->waited_on = false;
   new_status->status = status;
-  sema_down (&statuses_sema);
+  lock_acquire(&statuses_lock);
   list_insert_ordered (&statuses, &new_status->statuselem, list_less_status,
                        NULL);
-  sema_up (&statuses_sema);
+  lock_release(&statuses_lock);
 }
 
 /* Helper function used to get status struct from the history
@@ -578,20 +580,20 @@ static struct status *
 get_status (tid_t tid)
 {
   struct list_elem *e;
-  sema_down (&statuses_sema);
+  lock_acquire(&statuses_lock);
   for (e = list_begin (&statuses); e != list_end (&statuses);
        e = list_next (e))
     {
       struct status *s = list_entry (e, struct status, statuselem);
       if (s->tid == tid)
         {
-          sema_up (&statuses_sema);
+          lock_release(&statuses_lock);
           return s;
         }
       else if (s->tid > tid)
         break;
     }
-  sema_up (&statuses_sema);
+  lock_release(&statuses_lock);
   return NULL;
 }
 
