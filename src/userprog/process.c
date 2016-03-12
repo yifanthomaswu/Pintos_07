@@ -20,6 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "userprog/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -33,6 +34,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy, *fn_copy_tmp;
   tid_t tid;
+  printf("execute: size: %d\n", frame_get_size());
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -224,8 +226,6 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-//  printf("size of status list before: %d\n", list_size(&statuses));
-
   /* Frees all child tids a process holds. */
   while (!list_empty (&cur->children))
     {
@@ -247,11 +247,7 @@ process_exit (void)
   /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
 
-//  if (is_dead(cur->parent_tid))
-//    remove_status(cur->tid);
-
-//  printf("size of status list after: %d\n", list_size(&statuses));
-
+  printf("before: pro: %s, size: %d\n", cur->name, frame_get_size());
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -268,6 +264,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  printf("after: pro: %s, size: %d\n", cur->name, frame_get_size());
 }
 
 /* Sets up the CPU for running user code in the current
@@ -556,14 +553,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      uint8_t *kpage = frame_get_page (0);
       if (kpage == NULL)
         return false;
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          frame_free_page (kpage);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -571,7 +568,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          frame_free_page (kpage);
           return false; 
         }
 
@@ -591,14 +588,14 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = frame_get_page (PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        frame_free_page (kpage);
     }
   return success;
 }
