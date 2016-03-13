@@ -48,7 +48,7 @@ frame_get_multiple (enum palloc_flags flags, size_t page_cnt)
     {
       struct frame *f = malloc (sizeof(struct frame));
       if (f == NULL)
-        PANIC("get_frames: out of memory");
+        PANIC("frame_get_multiple: out of memory");
       f->vaddr = pages + i * PGSIZE;
       lock_acquire(&frame_lock);
       hash_insert (&frame_table, &f->framehashelem);

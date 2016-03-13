@@ -21,6 +21,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "userprog/frame.h"
+#include "userprog/page.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -399,6 +400,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
+  bool load_once = false;
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
@@ -450,6 +452,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
+              else
+                {
+                  page_new_page(file_page, PAGE_FRAME, -1, file_name);
+                  goto loaded;
+                }
             }
           else
             goto done;
@@ -457,6 +464,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
+  loaded:
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
