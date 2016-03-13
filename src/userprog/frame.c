@@ -3,6 +3,7 @@
 #include <debug.h>
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 struct frame
   {
@@ -12,6 +13,9 @@ struct frame
   };
 
 static struct hash frame_table;
+
+static struct lock frame_lock;
+
 //static struct list active_frames;
 
 static unsigned frame_hash (const struct hash_elem *e, void *aux UNUSED);
@@ -22,6 +26,7 @@ static struct hash_elem *frame_lookup (void *vaddr);
 void
 frame_init (void)
 {
+  lock_init(&frame_lock);
   hash_init (&frame_table, frame_hash, frame_less, NULL);
 }
 
@@ -45,7 +50,9 @@ frame_get_multiple (enum palloc_flags flags, size_t page_cnt)
       if (f == NULL)
         PANIC("get_frames: out of memory");
       f->vaddr = pages + i * PGSIZE;
+      lock_acquire(&frame_lock);
       hash_insert (&frame_table, &f->framehashelem);
+      lock_release(&frame_lock);
     }
   return pages;
 }
@@ -63,7 +70,11 @@ frame_free_multiple (void *pages, size_t page_cnt)
   for (i = 0; i < (int) page_cnt; i++)
     {
       void *addr = pages + i * PGSIZE;
+
+      lock_acquire(&frame_lock);
       struct hash_elem *e = hash_delete (&frame_table, frame_lookup (addr));
+      lock_release(&frame_lock);
+
       if (e == NULL)
         continue;
       free (hash_entry (e, struct frame, framehashelem));
@@ -89,15 +100,19 @@ frame_less (const struct hash_elem *a, const struct hash_elem *b,
 static struct hash_elem *
 frame_lookup (void *vaddr)
 {
+  //Caller needs to hold frame_lock already
   struct frame f;
   struct hash_elem *e;
   f.vaddr = vaddr;
   e = hash_find (&frame_table, &f.framehashelem);
-  return e != NULL ? e : NULL;
+  return e;
 }
 
 int
 frame_get_size(void)
 {
-  return hash_size(&frame_table);
+  lock_acquire(&frame_lock);
+  int size = hash_size(&frame_table);
+  lock_release(&frame_lock);
+  return size;
 }
