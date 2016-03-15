@@ -430,6 +430,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
           if (validate_segment (&phdr, file)) 
             {
               bool writable = (phdr.p_flags & PF_W) != 0;
+              ASSERT (!writable);
               uint32_t file_page = phdr.p_offset & ~PGMASK;
               uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
               uint32_t page_offset = phdr.p_vaddr & PGMASK;
@@ -449,14 +450,20 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+              void *page = (void *) mem_page;
+              if (!load_segment (file, file_page, page, read_bytes, zero_bytes,
+                                 writable))
                 goto done;
-              else
+              else if (!load_once)
                 {
-                  page_new_page(file_page, PAGE_FRAME, -1, file_name);
-                  goto loaded;
+                  page_new_page (page, PAGE_FRAME, -1, file_name,
+                                 pagedir_get_page (t->pagedir, page), file_page,
+                                 -1, -1);
+                  load_once = true;
                 }
+              else
+                page_new_page (page, PAGE_EXEC, -1, file_name, NULL, file_page,
+                               read_bytes, zero_bytes);
             }
           else
             goto done;
@@ -464,7 +471,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
-  loaded:
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
@@ -481,8 +487,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 }
 
 /* load() helpers. */
-
-static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -561,7 +565,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = frame_get_page (0);
+      uint8_t *kpage = frame_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
 
@@ -596,7 +600,7 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = frame_get_page (PAL_ZERO);
+  kpage = frame_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -617,7 +621,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();

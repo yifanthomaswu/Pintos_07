@@ -14,6 +14,8 @@
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
+#include "userprog/page.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -505,6 +507,9 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Initialise the thread's lists. */
   list_init (&t->children);
   list_init (&t->files);
+#ifdef USERPROG
+  page_init (&t->page_table);
+#endif
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

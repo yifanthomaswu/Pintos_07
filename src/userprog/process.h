@@ -8,5 +8,6 @@ int process_wait (tid_t child_tid);
 bool is_child (tid_t child_tid);
 void process_exit (void);
 void process_activate (void);
+bool install_page (void *upage, void *kpage, bool writable);
 
 #endif /* userprog/process.h */
