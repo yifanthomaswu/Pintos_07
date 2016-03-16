@@ -18,7 +18,7 @@ static struct lock frame_lock;
 static unsigned frame_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool frame_less (const struct hash_elem *a, const struct hash_elem *b,
                         void *aux UNUSED);
-static struct hash_elem *frame_lookup (void *kaddr);
+static struct hash_elem *frame_lookup (const void *kaddr);
 
 void
 frame_init (void)
@@ -96,14 +96,12 @@ frame_less (const struct hash_elem *a, const struct hash_elem *b,
 }
 
 static struct hash_elem *
-frame_lookup (void *kaddr)
+frame_lookup (const void *kaddr)
 {
   //Caller needs to hold frame_lock already
   struct frame f;
-  struct hash_elem *e;
   f.kaddr = kaddr;
-  e = hash_find (&frame_table, &f.framehashelem);
-  return e;
+  return hash_find (&frame_table, &f.framehashelem);
 }
 
 int

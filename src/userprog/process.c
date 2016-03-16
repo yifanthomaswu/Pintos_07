@@ -349,9 +349,6 @@ struct Elf32_Phdr
 
 static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -371,6 +368,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
+  page_init_page_table (&t->page_table);
   process_activate ();
 
   /* Open executable file. */
@@ -400,7 +398,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
-  bool load_once = false;
+  bool first_load = false;
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
@@ -451,19 +449,25 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               void *page = (void *) mem_page;
-              if (!load_segment (file, file_page, page, read_bytes, zero_bytes,
-                                 writable))
-                goto done;
-              else if (!load_once)
+              if (first_load)
                 {
-                  page_new_page (page, PAGE_FRAME, -1, file_name,
-                                 pagedir_get_page (t->pagedir, page), file_page,
-                                 -1, -1);
-                  load_once = true;
+                  if (page_load_shared (page, file_name, file_page))
+                    {
+                      if (!page_new_page (page, PAGE_SHARED, -1, file_name,
+                                          file_page, -1, -1))
+                        {
+                          page_unload_shared (page);
+                          goto done;
+                        }
+                    }
+                  else if (!load_segment (file, file_page, page, read_bytes,
+                                          zero_bytes, writable))
+                    goto done;
+                  first_load = false;
                 }
-              else
-                page_new_page (page, PAGE_EXEC, -1, file_name, NULL, file_page,
-                               read_bytes, zero_bytes);
+              else if (!page_new_page (page, PAGE_EXEC, -1, file_name,
+                                       file_page, read_bytes, zero_bytes))
+                goto done;
             }
           else
             goto done;
@@ -547,7 +551,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
-static bool
+bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
