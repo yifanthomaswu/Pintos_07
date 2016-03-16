@@ -507,6 +507,7 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Initialise the thread's lists. */
   list_init (&t->children);
   list_init (&t->files);
+  list_init (&t->mapids);
 #ifdef USERPROG
   page_init (&t->page_table);
 #endif

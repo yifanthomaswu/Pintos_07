@@ -8,6 +8,8 @@
 extern struct lock file_lock;
 
 struct list statuses;
+struct list mapids;
+typedef int mapid_t;
 
 /* Struct used to map a process tid to related semaphores. */
 struct process_sema
@@ -35,5 +37,8 @@ void remove_status(tid_t tid);
 int get_exit_code (tid_t tid);
 bool is_waited_on (tid_t tid);
 bool is_dead (tid_t tid);
+
+static mapid_t mmap (int fd, void *addr);
+void munmap (mapid_t mapping);
 
 #endif /* userprog/syscall.h */
