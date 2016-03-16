@@ -30,6 +30,7 @@
 #include "userprog/tss.h"
 #include "userprog/frame.h"
 #include "userprog/page.h"
+#include "userprog/swap.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -116,6 +117,7 @@ main (void)
   exception_init ();
   syscall_init ();
   frame_init ();
+  swap_init ();
 #endif
 
   /* Start thread scheduler and enable interrupts. */

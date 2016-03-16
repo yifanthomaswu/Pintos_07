@@ -1,5 +1,5 @@
-#ifndef PAGE_H_
-#define PAGE_H_
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
 
 #include <hash.h>
 #include <stdbool.h>
@@ -22,4 +22,4 @@ void page_remove_page (void *page);
 bool page_check_page (void *page, bool write);
 bool page_load_page (void *page);
 
-#endif /* PAGE_H_ */
+#endif /* vm_page_h */
