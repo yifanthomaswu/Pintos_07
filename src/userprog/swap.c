@@ -3,22 +3,37 @@
 #include <debug.h>
 #include "devices/block.h"
 
-struct swap_table {
-	struct block *swap_block;
-	struct bitmap *sector_bm;
-};
-
-void
-swap_init (void)
+bool
+clean_page(uint32_t *pd, void *page)
 {
-	swap = block_get_role (BLOCK_SWAP);
-	if (swap == NULL)
-	    PANIC ("No swap partition found, can't initialize swap table.");
+
+}
+
+void *
+get_free_swap_slot(struct page_table *pt, int page_count)
+{
 
 }
 
 void
-swap_pages()
+swap_init (void)
 {
+
+}
+
+void
+init_swap_table(struct swap_table *st)
+{
+	st->swap_block = block_get_role(BLOCK_SWAP);
+	if(st->swap_block == NULL)
+		PANIC("ERROR: Couldn't initialise swap_table instance");
+	st->sector_bm = bitmap_create(block_size(st->swap_block));
+}
+
+void *
+swap_page(uint32_t *pd, void *page_addr)
+{
+	if(pagedir_is_dirty(pd, page_addr))
+		clean_page(pd, page_addr);
 
 }

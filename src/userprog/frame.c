@@ -17,6 +17,7 @@ static struct lock frame_lock;
 static struct list clock;
 static struct lock clock_lock;
 static struct list_elem hand;
+static struct swap_table frame_swap_table;
 
 
 
@@ -50,11 +51,23 @@ frame_get_multiple (enum palloc_flags flags, size_t page_cnt)
   void *pages = palloc_get_multiple (flags, page_cnt);
   if (pages == NULL) {
 	// page swapping:
+swap_page:
 	if(hand == list_tail(&clock)) //TODO: Check comparison operator
 	   hand = list_begin(&clock);
 	void *e_kaddr = list_entry(hand, struct frame, framelistelem)->kaddr;
 	// get the user page from kernel address
-	// check if a bit is set
+	void *e_uaddr = e_kaddr; //TODO: get the actual user page address
+	// Move hand up one entry
+	hand = list_next(hand);
+	// check if accessed bit is set
+	uint32_t *pd = thread_current()->pagedir;
+	if (pagedir_is_accessed(pd, e_uaddr)) {
+		// If yes, then reset it to 0 and try finding another page to swap
+		pagedir_set_accessed(pd, e_uaddr, false);
+		goto swap_page;
+	}
+	// If a good page is found, swap it
+	swap_page(pd, e_uaddr);
   }
   int i;
   for (i = 0; i < (int) page_cnt; i++)
