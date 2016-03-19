@@ -37,7 +37,7 @@ swap_init (void)
 }
 
 bool
-swap_back_in(void *page_addr)
+swap_in(void *page_addr)
 {
   lock_acquire (&swap_lock);
   struct swap *s = hash_entry(hash_find(&swap_table, swap_lookup(page_addr)), struct swap, swaphashelem);
@@ -70,7 +70,7 @@ swap_back_in(void *page_addr)
 }
 
 bool
-swap_page(uint32_t *pd, void *page_addr)
+swap_out(uint32_t *pd, void *page_addr)
 {
   if(pagedir_is_dirty(pd, page_addr)) {
       // mark swap table entry in bitmap

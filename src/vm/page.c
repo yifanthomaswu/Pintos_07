@@ -11,7 +11,6 @@
 static unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a, const struct hash_elem *b,
                        void *aux UNUSED);
-static struct hash_elem *page_lookup (void *uaddr);
 
 void
 page_init (struct hash *page_table)
@@ -129,7 +128,7 @@ page_less (const struct hash_elem *a, const struct hash_elem *b,
       hash_entry (b, struct page, pagehashelem)->uaddr;
 }
 
-static struct hash_elem *
+struct hash_elem *
 page_lookup (void *uaddr)
 {
   struct page f;

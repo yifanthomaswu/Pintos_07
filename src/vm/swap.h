@@ -5,6 +5,6 @@
 #include <stdbool.h>
 
 void swap_init (void);
-bool swap_page(uint32_t *, void *);
-bool swap_back_in(void *);
+bool swap_out(uint32_t *, void *);
+bool swap_in(void *);
 #endif /* vm_swap_h_*/

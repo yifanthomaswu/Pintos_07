@@ -36,4 +36,6 @@ void page_remove_page (void *page);
 bool page_check_page (void *page, bool write);
 bool page_load_page (void *page);
 
+struct hash_elem *page_lookup (void *uaddr);
+
 #endif /* vm_page_h */

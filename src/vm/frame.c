@@ -1,12 +1,15 @@
 #include "vm/frame.h"
 #include <hash.h>
 #include <debug.h>
+#include "devices/timer.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/pte.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 
 #define TAU 50 // parameter for page age (in timer ticks)
 
@@ -15,7 +18,8 @@ struct frame
     struct hash_elem framehashelem;
     struct list_elem framelistelem;
     void *kaddr;
-    tid_t owner_tid;
+    uint32_t pd;
+
   };
 
 static struct hash frame_table;
@@ -43,68 +47,74 @@ frame_init (void)
 void *
 frame_get_page (enum palloc_flags flags)
 {
-  return frame_get_multiple (flags, 1);
-}
+	ASSERT (flags && PAL_USER);
 
-void *
-frame_get_multiple (enum palloc_flags flags, size_t page_cnt)
-{
-  ASSERT (flags && PAL_USER);
-
-//  void *pages = palloc_get_multiple (PAL_ASSERT | PAL_USER | flags, page_cnt);
-  void *pages = palloc_get_multiple (flags, page_cnt);
-  if (pages == NULL) {
-	// page swapping:
-	  void *victim;
-	  struct thread *owner_thread; //TODO: get owner thread
-	  uint32_t *pd = owner_thread->pagedir;
+	//  void *page = palloc_get_multiple (PAL_ASSERT | PAL_USER | flags, page_cnt);
+	void *victim = palloc_get_page (flags);
+	if (victim == NULL) {
+		// page swapping:
+		void *swap_buffer = NULL; //TODO: maybe change to array/list
+		int64_t age = 0;
+		uint32_t *pd;
+		uint32_t *victim_pd;
+		struct list_elem *first_elem = hand;
 page_swapping:
-		if(hand == list_tail(&clock)) //TODO: Check comparison operator
-		   hand = list_begin(&clock);
+		if (hand == list_tail(&clock))
+			hand = list_begin(&clock);
 		struct frame *e = list_entry(hand, struct frame, framelistelem);
+		pd = e->pd;
 		void *e_kaddr = e->kaddr;
-		// get the user page from kernel address
-		//void *e_uaddr; = pd_no(e_kaddr, false); //TODO Convert kernel virtual addr to user virtual addr
+		struct page *page = hash_entry(page_lookup(e_kaddr), struct page, pagehashelem);
+		int64_t page_age = timer_elapsed(page->last_accessed_time);
+		if(page_age > TAU) {
+			age = page_age;
+			victim = e_kaddr;
+			victim_pd = pd;
+			if(!pagedir_is_dirty(pd, e_kaddr)) {
+				goto do_swap;
+			}
+			if(swap_buffer == NULL) {
+				swap_buffer = e_kaddr;
+				pagedir_set_dirty(pd, e_kaddr, false);
+			}
+		}
+		else {
+			if(page_age > age) {
+				age = page_age;
+				victim = e_kaddr;
+				victim_pd = pd;
+			}
+		}
 		// Move hand up one entry
 		hand = list_next(hand);
-		// check if accessed bit is set
+		if (hand != first_elem)
 			goto page_swapping;
 
-		// If a good page is found, swap it
-		pages = swap_page(pd, e_kaddr);
-		frame_free_multiple(pages, page_cnt);
-  }
-  int i;
-  for (i = 0; i < (int) page_cnt; i++)
-    {
-      struct frame *f = malloc (sizeof(struct frame));
-      if (f == NULL)
-        PANIC ("frame_get_multiple: out of memory");
-      f->kaddr = pages + i * PGSIZE;
-      lock_acquire (&frame_lock);
-      hash_insert (&frame_table, &f->framehashelem);
-      lock_release (&frame_lock);
+		do_swap:
+		//if(swap_buffer != victim)
+		//	swap_out(pd, swap_buffer);
+		swap_out(victim_pd, victim);
+		frame_free_page(victim);
+	}
+	struct frame *f = malloc (sizeof(struct frame));
+	if (f == NULL)
+		PANIC ("frame_get_multiple: out of memory");
+	f->kaddr = victim;
+	f->pd = thread_current ()->pagedir;
+	lock_acquire (&frame_lock);
+	hash_insert (&frame_table, &f->framehashelem);
+	lock_release (&frame_lock);
 
-      lock_acquire (&clock_lock);
-      list_push_back(&clock, &f->framelistelem);
-      lock_release (&clock_lock);
-    }
-  return pages;
+	lock_acquire (&clock_lock);
+	list_push_back(&clock, &f->framelistelem);
+	lock_release (&clock_lock);
+	return victim;
 }
 
 void
 frame_free_page (void *page)
 {
-  frame_free_multiple (page, 1);
-}
-
-void
-frame_free_multiple (void *pages, size_t page_cnt)
-{
-  int i;
-  for (i = 0; i < (int) page_cnt; i++)
-    {
-      void *addr = pages + i * PGSIZE;
+      void *addr = page;
 
       lock_acquire (&frame_lock);
       struct hash_elem *he = hash_delete (&frame_table, frame_lookup (addr));
@@ -113,13 +123,12 @@ frame_free_multiple (void *pages, size_t page_cnt)
       struct frame *entry = hash_entry (he, struct frame, framehashelem);
 
       lock_acquire (&clock_lock);
-      struct list_elem *le = list_remove (&entry->framelistelem);
+      list_remove (&entry->framelistelem);
       lock_release (&clock_lock);
 
       if (he != NULL)
         free (entry);
-    }
-  palloc_free_multiple (pages, page_cnt);
+      palloc_free_page (page);
 }
 
 static unsigned
