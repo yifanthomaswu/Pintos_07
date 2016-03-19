@@ -1,11 +1,11 @@
-#include "userprog/page.h"
+#include "vm/page.h"
 #include <debug.h>
 #include <string.h>
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
-#include "userprog/frame.h"
+#include "vm/frame.h"
 
 struct page
   {

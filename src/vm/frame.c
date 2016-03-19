@@ -1,4 +1,4 @@
-#include "userprog/frame.h"
+#include "vm/frame.h"
 #include <hash.h>
 #include <debug.h>
 #include "threads/vaddr.h"
@@ -51,9 +51,7 @@ frame_get_multiple (enum palloc_flags flags, size_t page_cnt)
   void *pages = palloc_get_multiple (flags, page_cnt);
   if (pages == NULL) {
 	// page swapping:
-	  int i;
 	  uint32_t *pd = thread_current()->pagedir;
-	  for (i = 0; i , (int) page_cnt; i++) {
 page_swapping:
 		if(hand == list_tail(&clock)) //TODO: Check comparison operator
 		   hand = list_begin(&clock);

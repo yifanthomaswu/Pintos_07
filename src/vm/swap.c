@@ -1,15 +1,16 @@
-#include "swap.h"
+#include "vm/swap.h"
 #include <bitmap.h>
 #include <hash.h>
 #include <debug.h>
 #include "devices/block.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 
-struct lock swap_lock;
-struct block swap_block;
-struct bitmap sector_bm;
-struct hash swap_table;
+static struct lock swap_lock;
+static struct block *swap_block;
+static struct bitmap *sector_bm;
+static struct hash swap_table;
 
 static unsigned swap_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool swap_less (const struct hash_elem *a, const struct hash_elem *b,
@@ -33,37 +34,31 @@ swap_init (void)
   hash_init (&swap_table, swap_hash, swap_less, NULL);
 }
 
-void
-init_swap_table(struct swap_table *st)
-{
-
-}
-
 void *
-swap_back_in(void *)
+swap_back_in(void *addr)
 {
 
 }
 
 bool
-swap_page(struct swap_table *st, uint32_t *pd, void *page_addr)
+swap_page(uint32_t *pd, void *page_addr)
 {
   if(pagedir_is_dirty(pd, page_addr)) {
       // mark swap table entry in bitmap
       size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, 1, false);
       if(bm_sector == BITMAP_ERROR)
-	Panic("ERROR: Swap partition full!");
+    	  PANIC ("ERROR: Swap partition full!");
       //create swap_table entry
       struct swap *s = malloc (sizeof(struct swap));
       if (s == NULL)
-	PANIC ("swap_multiple: out of memory");
+    	  PANIC ("swap_multiple: out of memory");
       s->uaddr = page_addr;
       s->sector = bm_sector;
       lock_acquire (&swap_lock);
       hash_insert (&swap_table, &s->swaphashelem);
       lock_release (&swap_lock);
       // Copy frame = 8 sectors
-      const void* buffer = malloc(512);
+      /*const void* buffer = malloc(512);
       if (!buffer)
 	return false;
       int i;
@@ -71,18 +66,8 @@ swap_page(struct swap_table *st, uint32_t *pd, void *page_addr)
 	{
 	  memcpy(buffer, page_addr + (i*512), 512);
 	  block_write(&swap_block, bm_sector + i, buffer);
-	}
+	}*/
       return true;
-  }
-}
-
-void *
-swap_multiple(struct swap_table *st, uint32_t *pd, void *page_addr, int page_cnt)
-{
-  int i;
-  for (i = 0; i < page_cnt; ++i) {
-
-      }
   }
 }
 
