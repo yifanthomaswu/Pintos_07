@@ -14,6 +14,20 @@ enum page_location
   PAGE_EXEC
 };
 
+struct page
+  {
+    struct hash_elem pagehashelem;
+    void *uaddr;
+    enum page_location location;
+    int fd;
+    char *file_name;
+    void *kaddr;
+    off_t ofs;
+    uint32_t read_bytes;
+    uint32_t zero_bytes;
+    int64_t last_accessed_time;
+  };
+
 void page_init (struct hash *page_table);
 void page_new_page (void *page, enum page_location location, int fd,
                     const char *file_name, void *kaddr, off_t ofs,

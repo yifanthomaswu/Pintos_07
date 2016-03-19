@@ -1,24 +1,12 @@
 #include "vm/page.h"
 #include <debug.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "vm/frame.h"
-
-struct page
-  {
-    struct hash_elem pagehashelem;
-    void *uaddr;
-    enum page_location location;
-    int fd;
-    char *file_name;
-    void *kaddr;
-    off_t ofs;
-    uint32_t read_bytes;
-    uint32_t zero_bytes;
-  };
 
 static unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a, const struct hash_elem *b,
@@ -41,6 +29,7 @@ page_new_page (void *page, enum page_location location, int fd,
     PANIC("page_new_page: out of memory");
   p->uaddr = page;
   p->location = location;
+  p->last_accessed_time = timer_ticks();
   int length;
   switch (location)
     {
