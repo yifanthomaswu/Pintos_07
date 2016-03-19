@@ -6,5 +6,5 @@
 
 void swap_init (void);
 bool swap_page(uint32_t *, void *);
-void *swap_back_in(void *);
+bool swap_back_in(void *);
 #endif /* vm_swap_h_*/
