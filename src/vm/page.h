@@ -5,37 +5,34 @@
 #include <stdbool.h>
 #include "filesys/off_t.h"
 
-enum page_location
+enum page_flags
 {
-  PAGE_FILESYS,
-  PAGE_SWAP,
-  PAGE_ZERO,
-  PAGE_FRAME,
-  PAGE_EXEC
+  PAGE_ZERO = 1,
+  PAGE_WRITABLE = 2,
+  PAGE_SHARE = 4,
+  PAGE_FRAME = 8
 };
 
 struct page
   {
     struct hash_elem pagehashelem;
     void *uaddr;
-    enum page_location location;
-    int fd;
+    enum page_flags flags;
     char *file_name;
-    void *kaddr;
     off_t ofs;
     uint32_t read_bytes;
-    uint32_t zero_bytes;
     int64_t last_accessed_time;
   };
 
-void page_init (struct hash *page_table);
-void page_new_page (void *page, enum page_location location, int fd,
-                    const char *file_name, void *kaddr, off_t ofs,
-                    uint32_t read_bytes, uint32_t zero_bytes);
+void page_init (void);
+void page_done (void);
+bool page_create_table (struct hash *page_table);
+void page_destroy_table (struct hash *page_table);
+bool page_new_page (void *page, enum page_flags flags, const char *file_name,
+                    off_t ofs, uint32_t read_bytes);
 void page_remove_page (void *page);
-bool page_check_page (void *page, bool write);
-bool page_load_page (void *page);
+bool page_load_page (void *page, bool write);
 
-struct hash_elem *page_lookup (void *uaddr);
+struct hash_elem *page_lookup (const void *uaddr);
 
 #endif /* vm_page_h */

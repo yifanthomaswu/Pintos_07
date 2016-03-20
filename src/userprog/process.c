@@ -35,7 +35,6 @@ process_execute (const char *file_name)
 {
   char *fn_copy, *fn_copy_tmp;
   tid_t tid;
-  printf("execute: size: %d\n", frame_get_size());
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -232,8 +231,7 @@ process_exit (void)
     {
       struct list_elem *e = list_pop_front (&cur->children);
       struct child_tid *c = list_entry (e, struct child_tid, childtidelem);
-//      if (is_dead(c->tid))
-	remove_status(c->tid);
+      remove_status (c->tid);
       free (c);
     }
   /* Frees all files to fd mappings a process holds. */
@@ -248,7 +246,8 @@ process_exit (void)
   /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
 
-  printf("before: pro: %s, size: %d\n", cur->name, frame_get_size());
+  page_destroy_table (&cur->page_table);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -265,7 +264,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  printf("after: pro: %s, size: %d\n", cur->name, frame_get_size());
 }
 
 /* Sets up the CPU for running user code in the current
@@ -349,9 +347,6 @@ struct Elf32_Phdr
 
 static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -370,6 +365,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
+    goto done;
+  if (!page_create_table (&t->page_table))
     goto done;
   process_activate ();
 
@@ -400,7 +397,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
-  bool load_once = false;
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
@@ -430,7 +426,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
           if (validate_segment (&phdr, file)) 
             {
               bool writable = (phdr.p_flags & PF_W) != 0;
-              ASSERT (!writable);
               uint32_t file_page = phdr.p_offset & ~PGMASK;
               uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
               uint32_t page_offset = phdr.p_vaddr & PGMASK;
@@ -451,19 +446,25 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               void *page = (void *) mem_page;
-              if (!load_segment (file, file_page, page, read_bytes, zero_bytes,
-                                 writable))
-                goto done;
-              else if (!load_once)
+              enum page_flags flags = writable ? PAGE_WRITABLE : PAGE_SHARE;
+              while (read_bytes > 0 || zero_bytes > 0)
                 {
-                  page_new_page (page, PAGE_FRAME, -1, file_name,
-                                 pagedir_get_page (t->pagedir, page), file_page,
-                                 -1, -1);
-                  load_once = true;
+                  uint32_t page_read_bytes =
+                      read_bytes < PGSIZE ? read_bytes : PGSIZE;
+                  if (page_read_bytes == 0)
+                    {
+                      if (!page_new_page (page, flags | PAGE_ZERO, file_name,
+                                          file_page, 0))
+                        goto done;
+                    }
+                  else if (!page_new_page (page, flags, file_name, file_page,
+                                           page_read_bytes))
+                    goto done;
+                  page += PGSIZE;
+                  file_page += PGSIZE;
+                  read_bytes -= page_read_bytes;
+                  zero_bytes -= PGSIZE - page_read_bytes;
                 }
-              else
-                page_new_page (page, PAGE_EXEC, -1, file_name, NULL, file_page,
-                               read_bytes, zero_bytes);
             }
           else
             goto done;
@@ -547,9 +548,9 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
-static bool
+bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+              uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);

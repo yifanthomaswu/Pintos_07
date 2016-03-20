@@ -117,7 +117,7 @@ main (void)
   exception_init ();
   syscall_init ();
   frame_init ();
-  swap_init ();
+  page_init ();
 #endif
 
   /* Start thread scheduler and enable interrupts. */
@@ -130,6 +130,10 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+#endif
+
+#ifdef USERPROG
+  swap_init ();
 #endif
 
   printf ("Boot complete.\n");

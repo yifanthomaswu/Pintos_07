@@ -23,7 +23,7 @@ struct process_sema
 };
 
 void syscall_init (void);
-void *syscall_user_memory (const void *vaddr);
+void *syscall_user_memory (const void *vaddr, bool write);
 void pre_exit (int status);
 
 struct process_sema *add_process_sema (tid_t tid);
