@@ -159,14 +159,12 @@ page_fault (struct intr_frame *f)
      unallowed memory access. */
   if (user)
     {
-      if (!is_user_vaddr (fault_addr) || !not_present
-          || !page_load_page (fault_addr, write))
-        {
-          pre_exit (-1);
-          thread_exit ();
-        }
-      else
+//      printf("page_fault: %x\n", (int)pg_round_down(fault_addr));
+//      printf("user: %d\n", user);
+      if (not_present && syscall_user_memory (fault_addr, write) != NULL)
         return;
+      pre_exit (-1);
+      thread_exit ();
     }
 
   /* To implement virtual memory, delete the rest of the function

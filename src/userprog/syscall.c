@@ -13,6 +13,7 @@
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "userprog/page.h"
 
 /* Struct used to keep the history of dead processes and their exit codes. */
 struct status
@@ -93,7 +94,7 @@ syscall_handler (struct intr_frame *f)
 {
   uint32_t *sp = f->esp;
   /* Memory accessing check for system call number. */
-  if (syscall_user_memory (sp) == NULL)
+  if (syscall_user_memory (sp, false) == NULL)
     exit (-1);
   /* Variables hold the passed arguments. */
   uint32_t arg0 = 0, arg1 = 0, arg2 = 0;
@@ -104,14 +105,14 @@ syscall_handler (struct intr_frame *f)
     case SYS_WRITE:
       /* Only read and write have a third argument (arg2).
          Case fallthrough avoids code duplications. */
-      if (syscall_user_memory (sp + 3) == NULL)
+      if (syscall_user_memory (sp + 3, false) == NULL)
         exit (-1);
       else
         arg2 = *(sp + 3);
     case SYS_CREATE:
     case SYS_SEEK:
       /* Create and seek both have two arguments. */
-      if (syscall_user_memory (sp + 2) == NULL)
+      if (syscall_user_memory (sp + 2, false) == NULL)
         exit (-1);
       else
         arg1 = *(sp + 2);
@@ -124,7 +125,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_TELL:
     case SYS_CLOSE:
       /* Other syscalls with one argument. */
-      if (syscall_user_memory (sp + 1) == NULL)
+      if (syscall_user_memory (sp + 1, false) == NULL)
         exit (-1);
       else
         arg0 = *(sp + 1);
@@ -179,10 +180,16 @@ syscall_handler (struct intr_frame *f)
 /* Checks if a virtual address lies in the user address space and is mapped.
    Returns NULL otherwise. */
 void *
-syscall_user_memory (const void *vaddr)
+syscall_user_memory (const void *vaddr, bool write)
 {
   if (is_user_vaddr (vaddr))
-    return pagedir_get_page (thread_current ()->pagedir, vaddr);
+    {
+      void *kaddr = pagedir_get_page (thread_current ()->pagedir, vaddr);
+      if (kaddr == NULL)
+        if (page_load_page (vaddr, write))
+          kaddr = pagedir_get_page (thread_current ()->pagedir, vaddr);
+      return kaddr;
+    }
   else
     return NULL;
 }
@@ -261,7 +268,7 @@ pre_exit (int status)
 static tid_t
 exec (const char *cmd_line)
 {
-  if (syscall_user_memory (cmd_line) == NULL)
+  if (syscall_user_memory (cmd_line, false) == NULL)
     exit (-1);
   tid_t new_tid = process_execute (cmd_line);
   if (new_tid != -1)
@@ -313,7 +320,7 @@ wait (tid_t tid)
 static bool
 create (const char *file, unsigned initial_size)
 {
-  if (syscall_user_memory (file) == NULL)
+  if (syscall_user_memory (file, false) == NULL)
     exit (-1);
   lock_acquire (&file_lock);
   bool success = filesys_create (file, initial_size);
@@ -325,7 +332,7 @@ create (const char *file, unsigned initial_size)
 static bool
 remove (const char *file)
 {
-  if (syscall_user_memory (file) == NULL)
+  if (syscall_user_memory (file, false) == NULL)
     exit (-1);
   lock_acquire (&file_lock);
   bool success = filesys_remove (file);
@@ -339,7 +346,7 @@ remove (const char *file)
 static int
 open (const char *file)
 {
-  if (syscall_user_memory (file) == NULL)
+  if (syscall_user_memory (file, false) == NULL)
     exit (-1);
   lock_acquire (&file_lock);
   struct file *current_file = filesys_open (file);
@@ -393,7 +400,7 @@ filesize (int fd)
 static int
 read (int fd, void *buffer, unsigned size)
 {
-  if (syscall_user_memory (buffer) == NULL)
+  if (syscall_user_memory (buffer, true) == NULL)
     exit (-1);
   if (fd == STDIN_FILENO)
     {
@@ -431,7 +438,7 @@ read (int fd, void *buffer, unsigned size)
 static int
 write (int fd, const void *buffer, unsigned size)
 {
-  if (syscall_user_memory (buffer) == NULL)
+  if (syscall_user_memory (buffer, false) == NULL)
     exit (-1);
   if (fd == STDOUT_FILENO)
     {

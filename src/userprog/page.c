@@ -120,11 +120,13 @@ page_remove_page (void *page)
 bool
 page_load_page (void *page, bool write)
 {
+  page = pg_round_down (page);
   struct hash_elem *e = page_lookup (page);
   if (e == NULL)
     return false;
   struct page *p = hash_entry (e, struct page, pagehashelem);
-  if (write && !(p->flags & PAGE_WRITABLE))
+  bool writable = p->flags & PAGE_WRITABLE;
+  if (write && !writable)
     return false;
 
   bool shared = p->flags & PAGE_SHARED;
@@ -137,7 +139,7 @@ page_load_page (void *page, bool write)
       void *kaddr = frame_get_page (PAL_USER | PAL_ZERO);
       if (kaddr == NULL)
         return false;
-      if (!install_page (page, kaddr, write))
+      if (!install_page (page, kaddr, writable))
         {
           frame_free_page (kaddr);
           return false;
@@ -154,7 +156,7 @@ page_load_page (void *page, bool write)
           return false;
         }
       if (!load_segment (file, p->ofs, page, p->read_bytes,
-                         PGSIZE - p->read_bytes, write))
+                         PGSIZE - p->read_bytes, writable))
         {
           file_close (file);
           lock_release (&file_lock);
