@@ -6,5 +6,6 @@
 
 void swap_init (void);
 bool swap_out(uint32_t *, void *);
+int64_t swap_free(void *page_addr);
 bool swap_in(void *);
 #endif /* vm_swap_h_*/

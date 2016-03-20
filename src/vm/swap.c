@@ -39,33 +39,46 @@ swap_init (void)
 bool
 swap_in(void *page_addr)
 {
+  int64_t bm_sector = swap_free(page_addr);
+  // if doesn't exist, return failure of loading in
+  if (bm_sector == -1)
+    return false;
+  bm_sector *= 8;
+  void* buffer = malloc(512);
+  if (buffer == NULL)
+    return false;
+  int i;
+  for (i = 0; i < 8; i++)
+    {
+      block_read(swap_block, bm_sector + i, buffer);
+      memcpy(page_addr + (i*512), buffer, 512);
+    }
+  free(buffer);
+  // Loading back successful, return true
+  return true;
+}
+
+int64_t
+swap_free(void *page_addr)
+{
   lock_acquire (&swap_lock);
   struct swap *s = hash_entry(hash_find(&swap_table, swap_lookup(page_addr)), struct swap, swaphashelem);
   lock_release (&swap_lock);
-  if (s)
-    {
-      lock_acquire (&swap_lock);
-      hash_delete(&swap_table, &s->swaphashelem);
-      lock_release (&swap_lock);
 
-      size_t bm_sector = s->sector;
-      free(s);
-      bitmap_scan_and_flip(sector_bm, bm_sector, 1, true);
+  if (s != NULL)
+      {
+        lock_acquire (&swap_lock);
+        hash_delete(&swap_table, &s->swaphashelem);
+        lock_release (&swap_lock);
 
-      bm_sector *= 8;
-      void* buffer = malloc(512);
-      if (!buffer)
-	return false;
-      int i;
-      for (i = 0; i < 8; i++)
-	{
-	  block_read(swap_block, bm_sector + i, buffer);
-	  memcpy(page_addr + (i*512), buffer, 512);
-	}
-      free(buffer);
-      return true;
-    }
-  return false;
+        size_t bm_sector = s->sector;
+        free(s);
+        bitmap_scan_and_flip(sector_bm, bm_sector, 1, true);
+        //On finding and successful deletion return bit map index
+        return bm_sector;
+      }
+  //if doesn't exist return invalid index -1
+  return -1;
 }
 
 bool
