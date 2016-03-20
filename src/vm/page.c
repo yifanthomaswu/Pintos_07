@@ -1,4 +1,4 @@
-#include "userprog/page.h"
+#include "vm/page.h"
 #include <debug.h>
 #include <string.h>
 #include "threads/malloc.h"
@@ -6,7 +6,7 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
-#include "userprog/frame.h"
+#include "vm/frame.h"
 #include "userprog/syscall.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -252,6 +252,7 @@ page_add_shared (struct page *p)
       memcpy (s->file_name, p->file_name, length);
       s->kaddr = pagedir_get_page (thread_current ()->pagedir, p->uaddr);
       s->ofs = p->ofs;
+      s->read_bytes = p->flags & PAGE_WRITABLE ? p->read_bytes : 0;
       s->share_count = 1;
       hash_insert (&shared_pages, &s->sharedhashelem);
     }

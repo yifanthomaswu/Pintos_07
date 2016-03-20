@@ -28,8 +28,8 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
-#include "userprog/frame.h"
-#include "userprog/page.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 #else
 #include "tests/threads/tests.h"
 #endif

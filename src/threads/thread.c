@@ -507,9 +507,6 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init (&t->children);
   list_init (&t->files);
   list_init (&t->mapids);
-#ifdef USERPROG
-  page_init (&t->page_table);
-#endif
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

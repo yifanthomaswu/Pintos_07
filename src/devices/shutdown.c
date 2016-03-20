@@ -8,7 +8,7 @@
 #include "threads/thread.h"
 #ifdef USERPROG
 #include "userprog/exception.h"
-#include "userprog/page.h"
+#include "vm/page.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"

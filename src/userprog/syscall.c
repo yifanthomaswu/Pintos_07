@@ -13,7 +13,7 @@
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
-#include "userprog/page.h"
+#include "vm/page.h"
 
 /* Struct used to keep the history of dead processes and their exit codes. */
 struct status
@@ -23,6 +23,8 @@ struct status
     int status;
     bool dead;
   };
+
+typedef int mapid_t;
 
 struct memmap
 {
@@ -37,24 +39,26 @@ struct memmap
 struct lock file_lock;
 /* The current free file descriptor available to a process.
    Accessible through the get_new_fd () function. */
-static int fd_count;
 
-static int mapid_count;
 /* History of dead processes. */
+static struct list statuses;
 
 /* List of semaphores related to running process. */
 static struct list processes;
+
+static struct list mapids;
+
 /* Semaphores to synchronise access to above variables */
-static struct lock fd_count_lock;
+static struct lock fd_lock;
+static struct lock mapid_lock;
 static struct lock statuses_lock;
 static struct lock processes_lock;
 
 static void syscall_handler (struct intr_frame *);
 static inline int get_new_fd (void);
+static inline int get_new_mapid (void);
 static struct file_fd *get_file_fd (int fd);
-static inline int get_new_mapid(void);
 static struct memmap *get_mapid (int fd);
-
 
 static void halt (void);
 static void exit (int status);
@@ -69,6 +73,8 @@ static void seek (int fd, unsigned position);
 static unsigned tell (int fd);
 static int open (const char *file);
 static void close (int fd);
+static mapid_t mmap (int fd, void *addr);
+static void munmap (mapid_t mapping);
 
 static struct status *get_status (tid_t tid);
 static bool list_less_file (const struct list_elem *a,
@@ -87,16 +93,15 @@ static bool list_less_mapid (const struct list_elem *a, const struct list_elem *
 void
 syscall_init (void)
 {
-  /* Initialise the next available fd to 2;
-     0 and 1 reserved for STD[IN/OUT]. */
-  fd_count = 2;
   /* Initialise the file system lock. */
   lock_init (&file_lock);
   /* Initialise the lists. */
   list_init (&statuses);
   list_init (&processes);
+  list_init (&mapids);
   /* Initialise the semaphores. */
-  lock_init (&fd_count_lock);
+  lock_init (&fd_lock);
+  lock_init (&mapid_lock);
   lock_init (&statuses_lock);
   lock_init (&processes_lock);
   /* Register the system call handler on 0x30. */
@@ -127,6 +132,7 @@ syscall_handler (struct intr_frame *f)
         arg2 = *(sp + 3);
     case SYS_CREATE:
     case SYS_SEEK:
+    case SYS_MMAP:
       /* Create and seek both have two arguments. */
       if (syscall_user_memory (sp + 2, false) == NULL)
         exit (-1);
@@ -140,6 +146,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
     case SYS_TELL:
     case SYS_CLOSE:
+    case SYS_MUNMAP:
       /* Other syscalls with one argument. */
       if (syscall_user_memory (sp + 1, false) == NULL)
         exit (-1);
@@ -190,6 +197,12 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:                  /* Close a file. */
       close (arg0);
       break;
+    case SYS_MMAP:
+      f->eax = mmap (arg0, (void *) arg1);
+      break;
+    case SYS_MUNMAP:
+      munmap (arg0);
+      break;
     }
 }
 
@@ -214,20 +227,28 @@ syscall_user_memory (const void *vaddr, bool write)
 static inline int
 get_new_fd (void)
 {
+  /* Initialise the next available fd to 2;
+     0 and 1 reserved for STD[IN/OUT]. */
+  static int next_fd = 2;
   int fd;
-  lock_acquire(&fd_count_lock);
-  fd = fd_count++;
-  lock_release(&fd_count_lock);
+
+  lock_acquire (&fd_lock);
+  fd = next_fd++;
+  lock_release (&fd_lock);
+
   return fd;
 }
 
 static inline int
 get_new_mapid (void)
 {
+  static int next_mapid = 0;
   int mapid;
-  lock_acquire(&fd_count_lock);
-  mapid = mapid_count++;
-  lock_release(&fd_count_lock);
+
+  lock_acquire (&mapid_lock);
+  mapid = next_mapid++;
+  lock_release (&mapid_lock);
+
   return mapid;
 }
 
@@ -559,73 +580,66 @@ close (int fd)
     }
 }
 
-mapid_t
+static mapid_t
 mmap (int fd, void *addr)
 {
-  if (addr == 0)
-	  return -1;
-  if (fd == STDOUT_FILENO)
-	  return -1;
-  else if (fd == STDIN_FILENO)
-      return -1;
-  if (pg_ofs(addr) != 0)
-	  return -1;
-  struct file_fd *filefd = get_file_fd (fd);
-  int flength = file_length (filefd->file);
-  if (flength == 0)
-	  return -1;
+  if (addr == 0 || fd == STDOUT_FILENO || fd == STDIN_FILENO
+      || pg_ofs (addr) != 0)
+    return -1;
+
+  struct file_fd *file_fd = get_file_fd (fd);
+  int length = file_length (file_fd->file);
+  if (length == 0)
+    return -1;
   void *old_addr = addr;
-  int old_flength = flength;
-  while (flength > 0) {
-	  if (flength % PGSIZE == 0) {
-		  page_new_page (addr, PAGE_FILESYS, fd, NULL, NULL, -1, -1, -1);
-		  flength -= PGSIZE;
-		  addr += PGSIZE;
-	  } else {
-		  page_new_page (addr, PAGE_FILESYS, fd, NULL, NULL, -1, flength, PGSIZE-flength);
-		  flength = 0;
-		  addr += flength;
-	  }
-  }
-  struct memmap *memorymap = malloc (sizeof (struct memmap));
+  enum page_flags flags = PAGE_WRITABLE | PAGE_SHARE;
+  off_t ofs = 0;
+  while (ofs + PGSIZE <= length)
+    {
+      if (!page_new_page (addr, flags, file_fd->file_name, ofs, PGSIZE))
+        return -1;
+      addr += PGSIZE;
+      ofs += PGSIZE;
+    }
+  if (!page_new_page (addr, flags, file_fd->file_name, ofs, length - ofs))
+    return -1;
+
+  struct memmap *memorymap = malloc (sizeof(struct memmap));
   if (memorymap == NULL)
-	  exit (-1);
+    return -1;
   memorymap->fd = fd;
   memorymap->addr = old_addr;
-  memorymap->flength = old_flength;
+  memorymap->flength = length;
   memorymap->mapid = get_new_mapid ();
   list_insert_ordered (&mapids, &memorymap->memmapelem, list_less_mapid,
-                        NULL);
+  NULL);
   return memorymap->mapid;
 }
 
-void
+static void
 munmap (mapid_t mapping)
 {
-	struct memmap *memorymap = get_mapid (mapping);
-	while (memorymap->flength > 0)
-	{
-		page_remove_page (&memorymap->addr);
-		if(pagedir_is_dirty(thread_current()->pagedir, &memorymap->addr)){
-			if(memorymap->flength >= PGSIZE)
-				write(memorymap->fd, &memorymap->addr, PGSIZE);
-			else
-			{
-				write(memorymap->fd, &memorymap->addr, memorymap->flength);
-			    memorymap->flength = 0;
-			    break;
-			}
-		}
-		memorymap->flength -= PGSIZE;
-		memorymap->addr += PGSIZE;
-	}
-	list_remove (&memorymap->memmapelem);
-	free(memorymap);
+  struct memmap *memorymap = get_mapid (mapping);
+  while (memorymap->flength > 0)
+    {
+      page_remove_page (&memorymap->addr);
+      if (pagedir_is_dirty (thread_current ()->pagedir, &memorymap->addr))
+        {
+          if (memorymap->flength >= PGSIZE)
+            write (memorymap->fd, &memorymap->addr, PGSIZE);
+          else
+            {
+              write (memorymap->fd, &memorymap->addr, memorymap->flength);
+              memorymap->flength = 0;
+              break;
+            }
+        }
+      memorymap->flength -= PGSIZE;
+      memorymap->addr += PGSIZE;
+    }
+  list_remove (&memorymap->memmapelem);
+  free (memorymap);
 }
-
-
-
-
 
 /* Returns process_sema corresponding to the given tid if it already exisits.
    Otherwise, sets it up and returns it. */

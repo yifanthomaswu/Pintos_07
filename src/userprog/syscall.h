@@ -7,22 +7,18 @@
 /* Lock used to synchronise any access to the file system. */
 extern struct lock file_lock;
 
-struct list statuses;
-struct list mapids;
-typedef int mapid_t;
-
 /* Struct used to map a process tid to related semaphores. */
 struct process_sema
-{
-  struct list_elem process_semaelem;
-  tid_t tid;
-  /* Inform parent whether the child process is successfully created. */
-  bool load_fail;
-  /* Used to synchronise parent and child during exec system call. */
-  struct semaphore sema_exec;
-  /* Used to synchronise parent and child during wait system call. */
-  struct semaphore sema_wait;
-};
+  {
+    struct list_elem process_semaelem;
+    tid_t tid;
+    /* Inform parent whether the child process is successfully created. */
+    bool load_fail;
+    /* Used to synchronise parent and child during exec system call. */
+    struct semaphore sema_exec;
+    /* Used to synchronise parent and child during wait system call. */
+    struct semaphore sema_wait;
+  };
 
 void syscall_init (void);
 void *syscall_user_memory (const void *vaddr, bool write);
@@ -37,8 +33,5 @@ void remove_status(tid_t tid);
 int get_exit_code (tid_t tid);
 bool is_waited_on (tid_t tid);
 bool is_dead (tid_t tid);
-
-static mapid_t mmap (int fd, void *addr);
-void munmap (mapid_t mapping);
 
 #endif /* userprog/syscall.h */
