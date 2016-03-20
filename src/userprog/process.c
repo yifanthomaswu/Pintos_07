@@ -35,7 +35,6 @@ process_execute (const char *file_name)
 {
   char *fn_copy, *fn_copy_tmp;
   tid_t tid;
-  printf("execute: size: %d\n", frame_get_size());
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -232,8 +231,7 @@ process_exit (void)
     {
       struct list_elem *e = list_pop_front (&cur->children);
       struct child_tid *c = list_entry (e, struct child_tid, childtidelem);
-//      if (is_dead(c->tid))
-	remove_status(c->tid);
+      remove_status (c->tid);
       free (c);
     }
   /* Frees all files to fd mappings a process holds. */
@@ -248,7 +246,6 @@ process_exit (void)
   /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
 
-  printf("before: pro: %s, size: %d\n", cur->name, frame_get_size());
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -265,7 +262,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  printf("after: pro: %s, size: %d\n", cur->name, frame_get_size());
 }
 
 /* Sets up the CPU for running user code in the current
@@ -368,7 +364,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
-  page_init_page_table (&t->page_table);
+  if (!page_create (&t->page_table))
+    goto done;
   process_activate ();
 
   /* Open executable file. */
@@ -451,18 +448,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
               void *page = (void *) mem_page;
               if (first_load)
                 {
-                  if (page_load_shared (page, file_name, file_page))
+                  if (!page_new_page (page, PAGE_SHARED, -1, file_name,
+                                      file_page, -1, -1))
+                    goto done;
+                  if (!page_load_shared (page, file_name, file_page))
                     {
-                      if (!page_new_page (page, PAGE_SHARED, -1, file_name,
-                                          file_page, -1, -1))
+                      if (!load_segment (file, file_page, page, read_bytes,
+                                         zero_bytes, writable))
                         {
-                          page_unload_shared (page);
+                          page_remove_page (page);
                           goto done;
                         }
+                      if (!page_add_shared (
+                          pagedir_get_page (thread_current ()->pagedir, page),
+                          file_name, file_page))
+                        page_remove_page (page);
                     }
-                  else if (!load_segment (file, file_page, page, read_bytes,
-                                          zero_bytes, writable))
-                    goto done;
                   first_load = false;
                 }
               else if (!page_new_page (page, PAGE_EXEC, -1, file_name,

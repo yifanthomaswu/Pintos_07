@@ -8,6 +8,7 @@
 #include "threads/thread.h"
 #ifdef USERPROG
 #include "userprog/exception.h"
+#include "userprog/page.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -92,6 +93,9 @@ shutdown_power_off (void)
 
 #ifdef FILESYS
   filesys_done ();
+#endif
+#ifdef USERPROG
+  page_done ();
 #endif
 
   print_stats ();

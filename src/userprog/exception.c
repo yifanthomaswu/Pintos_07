@@ -160,15 +160,14 @@ page_fault (struct intr_frame *f)
 //  if (user && syscall_user_memory (fault_addr) == NULL)
   if (user)
     {
-      if (is_user_vaddr (fault_addr) && page_check_page (fault_addr, write))
-        {
-
-        }
-      else
+      if (!is_user_vaddr (fault_addr) || !not_present
+          || !page_load_page (fault_addr, write))
         {
           pre_exit (-1);
           thread_exit ();
         }
+      else
+        return;
     }
 
   /* To implement virtual memory, delete the rest of the function
