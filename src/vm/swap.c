@@ -45,7 +45,6 @@ swap_in(void *page_addr)
   // if doesn't exist, return failure of loading in
   if (bm_sector == -1)
     return false;
-  bm_sector *= SECTORS_IN_PAGE;
   void* buffer = malloc(BLOCK_SECTOR_SIZE);
   if (buffer == NULL)
     return false;
@@ -75,7 +74,7 @@ swap_free(void *page_addr)
 
         size_t bm_sector = s->sector;
         free(s);
-        bitmap_scan_and_flip(sector_bm, bm_sector, 1, true);
+        bitmap_scan_and_flip(sector_bm, bm_sector, SECTORS_IN_PAGE, true);
         //On finding and successful deletion return bit map index
         return bm_sector;
       }
@@ -90,7 +89,7 @@ swap_out(uint32_t *pd, void *page_addr)
     return true;
 
   // mark swap table entry in bitmap
-  size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, 1, false);
+  size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, SECTORS_IN_PAGE, false);
   if(bm_sector == BITMAP_ERROR)
     PANIC("ERROR: Swap partition full!");
   //create swap_table entry
@@ -99,7 +98,6 @@ swap_out(uint32_t *pd, void *page_addr)
     PANIC ("swap_multiple: out of memory");
   s->uaddr = page_addr;
   s->sector = bm_sector;
-  bm_sector *= SECTORS_IN_PAGE;
   lock_acquire (&swap_lock);
   hash_insert (&swap_table, &s->swaphashelem);
   lock_release (&swap_lock);

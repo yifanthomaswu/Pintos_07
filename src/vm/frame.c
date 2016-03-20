@@ -12,6 +12,7 @@
 #include "vm/swap.h"
 
 #define TAU 50 // parameter for page age (in timer ticks)
+#define VICTIM_CANDIDATES 4
 
 struct frame
   {
@@ -53,7 +54,9 @@ frame_get_page (enum palloc_flags flags)
 	void *victim = palloc_get_page (flags);
 	if (victim == NULL) {
 		// page swapping:
-		void *swap_buffer = NULL; //TODO: maybe change to array/list
+		void *candidate_victims[VICTIM_CANDIDATES]; //TODO: maybe change to array/list
+		uint32_t *candidate_victims_pd[VICTIM_CANDIDATES];
+		int num_candidate = 0;
 		int64_t age = 0;
 		uint32_t *pd;
 		uint32_t *victim_pd;
@@ -73,10 +76,12 @@ page_swapping:
 			if(!pagedir_is_dirty(pd, e_kaddr)) {
 				goto do_swap;
 			}
-			if(swap_buffer == NULL) {
-				swap_buffer = e_kaddr;
-				pagedir_set_dirty(pd, e_kaddr, false);
-			}
+			if (num_candidate < VICTIM_CANDIDATES)
+			  {
+			    candidate_victims[num_candidate] = e_kaddr;
+			    candidate_victims_pd[num_candidate] = pd;
+			    num_candidate++;
+			  }
 		}
 		else {
 			if(page_age > age) {
@@ -90,11 +95,25 @@ page_swapping:
 		if (hand != first_elem)
 			goto page_swapping;
 
-		do_swap:
-		//if(swap_buffer != victim)
-		//	swap_out(pd, swap_buffer);
+do_swap:
 		swap_out(victim_pd, victim);
+		pagedir_set_dirty(victim_pd, victim, false); // if victim in candidate this means it will do nothing
 		frame_free_page(victim);
+		victim = palloc_get_page (flags);
+		// release lock after the this so new page can be read in into victim
+		int n;
+		for (n = 0; n < VICTIM_CANDIDATES; n++)
+		  {
+		    void *candidate_victim = candidate_victims[n];
+		    uint32_t *candidate_victim_pd = candidate_victims_pd[n];
+		    if (candidate_victim != NULL)
+		      {
+			swap_out(candidate_victims_pd, candidate_victim);
+			pagedir_set_dirty(candidate_victims_pd, candidate_victim, false);
+		      }
+		  }
+
+
 	}
 	struct frame *f = malloc (sizeof(struct frame));
 	if (f == NULL)
