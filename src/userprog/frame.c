@@ -36,7 +36,7 @@ frame_get_page (enum palloc_flags flags)
 void *
 frame_get_multiple (enum palloc_flags flags, size_t page_cnt)
 {
-  ASSERT (flags && PAL_USER);
+  ASSERT (flags & PAL_USER);
 
 //  void *pages = palloc_get_multiple (PAL_ASSERT | PAL_USER | flags, page_cnt);
   void *pages = palloc_get_multiple (flags, page_cnt);

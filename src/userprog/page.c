@@ -124,7 +124,7 @@ page_load_page (void *page, bool write)
   if (e == NULL)
     return false;
   struct page *p = hash_entry (e, struct page, pagehashelem);
-  if (write && !(p->flags | PAGE_WRITABLE))
+  if (write && !(p->flags & PAGE_WRITABLE))
     return false;
 
   bool shared = p->flags & PAGE_SHARED;
@@ -179,7 +179,7 @@ page_load_shared (struct page *p)
   if (e != NULL)
     {
       struct shared *s = hash_entry (e, struct shared, sharedhashelem);
-      if (install_page (p->uaddr, s->kaddr, p->flags | PAGE_WRITABLE))
+      if (install_page (p->uaddr, s->kaddr, p->flags & PAGE_WRITABLE))
         {
           s->share_count++;
           lock_release (&shared_lock);

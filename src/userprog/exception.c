@@ -157,7 +157,6 @@ page_fault (struct intr_frame *f)
 
   /* Exit with -1 if page fault is due to user program made an
      unallowed memory access. */
-//  if (user && syscall_user_memory (fault_addr) == NULL)
   if (user)
     {
       if (!is_user_vaddr (fault_addr) || !not_present
