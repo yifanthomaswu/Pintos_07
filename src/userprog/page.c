@@ -38,6 +38,7 @@ static bool page_load_shared (struct page *p);
 static void page_unload_shared (struct page *p);
 static bool page_add_shared (struct page *p);
 
+static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 static unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a, const struct hash_elem *b,
                        void *aux UNUSED);
@@ -68,6 +69,21 @@ bool
 page_create_table (struct hash *page_table)
 {
   return hash_init (page_table, page_hash, page_less, NULL);
+}
+
+void
+page_destroy_table (struct hash *page_table)
+{
+  hash_destroy (page_table, page_destroy);
+}
+
+static void
+page_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct page *p = hash_entry (e, struct page, pagehashelem);
+  page_unload_shared (p);
+  free (p->file_name);
+  free (p);
 }
 
 bool
@@ -129,8 +145,8 @@ page_load_page (void *page, bool write)
   if (write && !writable)
     return false;
 
-  bool shared = p->flags & PAGE_SHARED;
-  if (shared)
+  bool share = p->flags & PAGE_SHARE;
+  if (share)
     if (page_load_shared (p))
       return true;
 
@@ -166,9 +182,8 @@ page_load_page (void *page, bool write)
       lock_release (&file_lock);
     }
 
-  if (shared)
-    if (!page_add_shared (p))
-      return false;
+  if (share)
+    page_add_shared (p);
 
   return true;
 }
@@ -184,6 +199,7 @@ page_load_shared (struct page *p)
       if (install_page (p->uaddr, s->kaddr, p->flags & PAGE_WRITABLE))
         {
           s->share_count++;
+          p->flags |= PAGE_FRAME;
           lock_release (&shared_lock);
           return true;
         }
@@ -195,7 +211,7 @@ page_load_shared (struct page *p)
 static void
 page_unload_shared (struct page *p)
 {
-  if (!(p->flags | PAGE_SHARED))
+  if (!(p->flags & PAGE_FRAME))
     return;
 
   lock_acquire (&shared_lock);
@@ -241,6 +257,7 @@ page_add_shared (struct page *p)
     }
   else
     hash_entry (e, struct shared, sharedhashelem)->share_count++;
+  p->flags |= PAGE_FRAME;
   lock_release (&shared_lock);
   return true;
 }

@@ -400,8 +400,13 @@ filesize (int fd)
 static int
 read (int fd, void *buffer, unsigned size)
 {
-  if (syscall_user_memory (buffer, true) == NULL)
-    exit (-1);
+  void *page = buffer;
+  while (page < buffer + size)
+    {
+      if (syscall_user_memory (page, true) == NULL)
+        exit (-1);
+      page += PGSIZE;
+    }
   if (fd == STDIN_FILENO)
     {
       /* Reads from standard input. */
@@ -438,8 +443,13 @@ read (int fd, void *buffer, unsigned size)
 static int
 write (int fd, const void *buffer, unsigned size)
 {
-  if (syscall_user_memory (buffer, false) == NULL)
-    exit (-1);
+  void *page = buffer;
+  while (page < buffer + size)
+    {
+      if (syscall_user_memory (page, false) == NULL)
+        exit (-1);
+      page += PGSIZE;
+    }
   if (fd == STDOUT_FILENO)
     {
       /* Writes to standard output. */

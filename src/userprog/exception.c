@@ -5,8 +5,6 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
-#include "userprog/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -157,10 +155,10 @@ page_fault (struct intr_frame *f)
 
   /* Exit with -1 if page fault is due to user program made an
      unallowed memory access. */
+//      printf("page_fault: %x\n", (int)fault_addr);
+//      printf("user: %d\n", user);
   if (user)
     {
-//      printf("page_fault: %x\n", (int)pg_round_down(fault_addr));
-//      printf("user: %d\n", user);
       if (not_present && syscall_user_memory (fault_addr, write) != NULL)
         return;
       pre_exit (-1);

@@ -246,6 +246,8 @@ process_exit (void)
   /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
 
+  page_destroy_table (&cur->page_table);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -444,7 +446,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               void *page = (void *) mem_page;
-              enum page_flags flags = writable ? PAGE_WRITABLE : PAGE_SHARED;
+              enum page_flags flags = writable ? PAGE_WRITABLE : PAGE_SHARE;
               while (read_bytes > 0 || zero_bytes > 0)
                 {
                   uint32_t page_read_bytes =
