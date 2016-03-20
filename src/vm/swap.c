@@ -9,6 +9,8 @@
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 
+#define SECTORS_IN_PAGE 8
+
 static struct lock swap_lock;
 static struct block *swap_block;
 static struct bitmap *sector_bm;
@@ -43,15 +45,15 @@ swap_in(void *page_addr)
   // if doesn't exist, return failure of loading in
   if (bm_sector == -1)
     return false;
-  bm_sector *= 8;
-  void* buffer = malloc(512);
+  bm_sector *= SECTORS_IN_PAGE;
+  void* buffer = malloc(BLOCK_SECTOR_SIZE);
   if (buffer == NULL)
     return false;
   int i;
-  for (i = 0; i < 8; i++)
+  for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
       block_read(swap_block, bm_sector + i, buffer);
-      memcpy(page_addr + (i*512), buffer, 512);
+      memcpy(page_addr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
     }
   free(buffer);
   // Loading back successful, return true
@@ -84,35 +86,35 @@ swap_free(void *page_addr)
 bool
 swap_out(uint32_t *pd, void *page_addr)
 {
-  if(pagedir_is_dirty(pd, page_addr)) {
-      // mark swap table entry in bitmap
-      size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, 1, false);
-      if(bm_sector == BITMAP_ERROR)
-	PANIC("ERROR: Swap partition full!");
-      //create swap_table entry
-      struct swap *s = malloc (sizeof(struct swap));
-      if (s == NULL)
-	PANIC ("swap_multiple: out of memory");
-      s->uaddr = page_addr;
-      s->sector = bm_sector;
-      bm_sector *= 8;
-      lock_acquire (&swap_lock);
-      hash_insert (&swap_table, &s->swaphashelem);
-      lock_release (&swap_lock);
-      // Copy frame = 8 sectors
-      void* buffer = malloc(512);
-      if (!buffer)
-	return false;
-      int i;
-      for (i = 0; i < 8; i++)
-	{
-	  memcpy(buffer, page_addr + (i*512), 512);
-	  block_write(swap_block, bm_sector + i, buffer);
-	}
-      free(buffer);
-      return true;
-  }
-  return false;
+  if(!pagedir_is_dirty(pd, page_addr))
+    return true;
+
+  // mark swap table entry in bitmap
+  size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, 1, false);
+  if(bm_sector == BITMAP_ERROR)
+    PANIC("ERROR: Swap partition full!");
+  //create swap_table entry
+  struct swap *s = malloc (sizeof(struct swap));
+  if (s == NULL)
+    PANIC ("swap_multiple: out of memory");
+  s->uaddr = page_addr;
+  s->sector = bm_sector;
+  bm_sector *= SECTORS_IN_PAGE;
+  lock_acquire (&swap_lock);
+  hash_insert (&swap_table, &s->swaphashelem);
+  lock_release (&swap_lock);
+  // Copy frame = 8 sectors
+  void* buffer = malloc(BLOCK_SECTOR_SIZE);
+  if (buffer == NULL)
+    PANIC ("swap_multiple: out of memory");
+  int i;
+  for (i = 0; i < SECTORS_IN_PAGE; i++)
+    {
+      memcpy(buffer, page_addr + (i*BLOCK_SECTOR_SIZE), BLOCK_SECTOR_SIZE);
+      block_write(swap_block, bm_sector + i, buffer);
+    }
+  free(buffer);
+  return true;
 }
 
 static unsigned
