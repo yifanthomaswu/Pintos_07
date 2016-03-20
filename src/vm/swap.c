@@ -32,7 +32,7 @@ swap_init (void)
   if(swap_block == NULL)
     PANIC("ERROR: Couldn't initialise swap_table instance");
   lock_init(&swap_lock);
-  sector_bm = bitmap_create(block_size(swap_block) * 8);
+  sector_bm = bitmap_create(block_size(swap_block));
   hash_init (&swap_table, swap_hash, swap_less, NULL);
 }
 
@@ -49,11 +49,10 @@ swap_in(void *page_addr)
       lock_release (&swap_lock);
 
       size_t bm_sector = s->sector;
-
       free(s);
+      bitmap_scan_and_flip(sector_bm, bm_sector, 1, true);
 
-      bitmap_scan_and_flip(sector_bm, bm_sector, 8, true);
-
+      bm_sector *= 8;
       void* buffer = malloc(512);
       if (!buffer)
 	return false;
@@ -74,7 +73,7 @@ swap_out(uint32_t *pd, void *page_addr)
 {
   if(pagedir_is_dirty(pd, page_addr)) {
       // mark swap table entry in bitmap
-      size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, 8, false);
+      size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, 1, false);
       if(bm_sector == BITMAP_ERROR)
 	PANIC("ERROR: Swap partition full!");
       //create swap_table entry
@@ -83,6 +82,7 @@ swap_out(uint32_t *pd, void *page_addr)
 	PANIC ("swap_multiple: out of memory");
       s->uaddr = page_addr;
       s->sector = bm_sector;
+      bm_sector *= 8;
       lock_acquire (&swap_lock);
       hash_insert (&swap_table, &s->swaphashelem);
       lock_release (&swap_lock);
