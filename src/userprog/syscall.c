@@ -24,11 +24,22 @@ struct status
     bool dead;
   };
 
+struct memmap
+{
+	struct list_elem memmapelem;
+	void *addr;
+	int flength;
+	mapid_t mapid;
+	int fd;
+};
+
 /* Lock used to synchronise any access to the file system. */
 struct lock file_lock;
 /* The current free file descriptor available to a process.
    Accessible through the get_new_fd () function. */
 static int fd_count;
+
+static int mapid_count;
 /* History of dead processes. */
 
 /* List of semaphores related to running process. */
@@ -41,6 +52,9 @@ static struct lock processes_lock;
 static void syscall_handler (struct intr_frame *);
 static inline int get_new_fd (void);
 static struct file_fd *get_file_fd (int fd);
+static inline int get_new_mapid(void);
+static struct memmap *get_mapid (int fd);
+
 
 static void halt (void);
 static void exit (int status);
@@ -66,6 +80,8 @@ static bool list_less_status (const struct list_elem *a,
 static bool list_less_process (const struct list_elem *a,
                                const struct list_elem *b,
                                void *aux UNUSED);
+static bool list_less_mapid (const struct list_elem *a, const struct list_elem *b,
+                void *aux UNUSED);
 
 /* Initialise and register the system call handler. */
 void
@@ -205,6 +221,16 @@ get_new_fd (void)
   return fd;
 }
 
+static inline int
+get_new_mapid (void)
+{
+  int mapid;
+  lock_acquire(&fd_count_lock);
+  mapid = mapid_count++;
+  lock_release(&fd_count_lock);
+  return mapid;
+}
+
 /* Returns the file_fd struct referenced by fd.
    If no file is open through fd by the current process, returns NULL. */
 static struct file_fd *
@@ -223,6 +249,24 @@ get_file_fd (int fd)
     }
   return NULL;
 }
+
+static struct memmap *
+get_mapid (int mapid)
+{
+	 struct thread *t = thread_current();
+	  struct list_elem *e;
+	  for (e = list_begin (&t->mapids); e != list_end (&t->mapids);
+	       e = list_next (e))
+	    {
+	      struct memmap *memorymap = list_entry (e, struct memmap, memmapelem);
+	      if (memorymap->mapid == mapid)
+	        return memorymap;
+	      else if (memorymap->mapid > mapid)
+	        return NULL;
+	    }
+	  return NULL;
+}
+
 
 /* Power down the machine. */
 static void
@@ -515,6 +559,74 @@ close (int fd)
     }
 }
 
+mapid_t
+mmap (int fd, void *addr)
+{
+  if (addr == 0)
+	  return -1;
+  if (fd == STDOUT_FILENO)
+	  return -1;
+  else if (fd == STDIN_FILENO)
+      return -1;
+  if (pg_ofs(addr) != 0)
+	  return -1;
+  struct file_fd *filefd = get_file_fd (fd);
+  int flength = file_length (filefd->file);
+  if (flength == 0)
+	  return -1;
+  void *old_addr = addr;
+  int old_flength = flength;
+  while (flength > 0) {
+	  if (flength % PGSIZE == 0) {
+		  page_new_page (addr, PAGE_FILESYS, fd, NULL, NULL, -1, -1, -1);
+		  flength -= PGSIZE;
+		  addr += PGSIZE;
+	  } else {
+		  page_new_page (addr, PAGE_FILESYS, fd, NULL, NULL, -1, flength, PGSIZE-flength);
+		  flength = 0;
+		  addr += flength;
+	  }
+  }
+  struct memmap *memorymap = malloc (sizeof (struct memmap));
+  if (memorymap == NULL)
+	  exit (-1);
+  memorymap->fd = fd;
+  memorymap->addr = old_addr;
+  memorymap->flength = old_flength;
+  memorymap->mapid = get_new_mapid ();
+  list_insert_ordered (&mapids, &memorymap->memmapelem, list_less_mapid,
+                        NULL);
+  return memorymap->mapid;
+}
+
+void
+munmap (mapid_t mapping)
+{
+	struct memmap *memorymap = get_mapid (mapping);
+	while (memorymap->flength > 0)
+	{
+		page_remove_page (&memorymap->addr);
+		if(pagedir_is_dirty(thread_current()->pagedir, &memorymap->addr)){
+			if(memorymap->flength >= PGSIZE)
+				write(memorymap->fd, &memorymap->addr, PGSIZE);
+			else
+			{
+				write(memorymap->fd, &memorymap->addr, memorymap->flength);
+			    memorymap->flength = 0;
+			    break;
+			}
+		}
+		memorymap->flength -= PGSIZE;
+		memorymap->addr += PGSIZE;
+	}
+	list_remove (&memorymap->memmapelem);
+	free(memorymap);
+}
+
+
+
+
+
 /* Returns process_sema corresponding to the given tid if it already exisits.
    Otherwise, sets it up and returns it. */
 struct process_sema *
@@ -699,4 +811,12 @@ list_less_process (const struct list_elem *a, const struct list_elem *b,
 {
   return list_entry (a, struct process_sema, process_semaelem)->tid <
       list_entry (b, struct process_sema, process_semaelem)->tid;
+}
+
+static bool
+list_less_mapid (const struct list_elem *a, const struct list_elem *b,
+                void *aux UNUSED)
+{
+  return list_entry (a, struct memmap, memmapelem)->mapid <
+      list_entry (b, struct memmap, memmapelem)->mapid;
 }

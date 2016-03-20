@@ -122,6 +122,7 @@ struct thread
     tid_t parent_tid;              /* Tid of the parent of the process. */
     struct list files;             /* List of file_fd to track open files. */
     struct file *exec_file;        /* File being executed by the process. */
+    struct list mapids;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
