@@ -30,6 +30,7 @@ struct memmap
 	void *addr;
 	int flength;
 	mapid_t mapid;
+	int fd;
 };
 
 /* Lock used to synchronise any access to the file system. */
@@ -542,7 +543,7 @@ close (int fd)
     }
 }
 
-static mapid_t
+mapid_t
 mmap (int fd, void *addr)
 {
   if (addr == 0)
@@ -551,7 +552,7 @@ mmap (int fd, void *addr)
 	  return -1;
   else if (fd == STDIN_FILENO)
       return -1;
-  if ( (unsigned)addr % 4 != 0)
+  if (pg_ofs(addr) != 0)
 	  return -1;
   struct file_fd *filefd = get_file_fd (fd);
   int flength = file_length (filefd->file);
@@ -573,12 +574,13 @@ mmap (int fd, void *addr)
   struct memmap *memorymap = malloc (sizeof (struct memmap));
   if (memorymap == NULL)
 	  exit (-1);
+  memorymap->fd = fd;
   memorymap->addr = old_addr;
   memorymap->flength = old_flength;
   memorymap->mapid = get_new_mapid ();
   list_insert_ordered (&mapids, &memorymap->memmapelem, list_less_mapid,
                         NULL);
-  return &memorymap->mapid;
+  return memorymap->mapid;
 }
 
 void
@@ -588,11 +590,25 @@ munmap (mapid_t mapping)
 	while (memorymap->flength > 0)
 	{
 		page_remove_page (&memorymap->addr);
-		memorymap->addr += PGSIZE;
+		if(pagedir_is_dirty(thread_current()->pagedir, &memorymap->addr)){
+			if(memorymap->flength >= PGSIZE)
+				write(memorymap->fd, &memorymap->addr, PGSIZE);
+			else
+			{
+				write(memorymap->fd, &memorymap->addr, memorymap->flength);
+			    memorymap->flength = 0;
+			    break;
+			}
+		}
 		memorymap->flength -= PGSIZE;
+		memorymap->addr += PGSIZE;
 	}
 	list_remove (&memorymap->memmapelem);
+	free(memorymap);
 }
+
+
+
 
 
 /* Returns process_sema corresponding to the given tid if it already exisits.
