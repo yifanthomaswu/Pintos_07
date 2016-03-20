@@ -3,6 +3,7 @@
 #include <string.h>
 #include "threads/malloc.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "userprog/frame.h"
@@ -14,12 +15,10 @@ struct page
   {
     struct hash_elem pagehashelem;
     void *uaddr;
-    enum page_location location;
-    int fd;
+    enum page_flags flags;
     char *file_name;
     off_t ofs;
     uint32_t read_bytes;
-    uint32_t zero_bytes;
   };
 
 struct shared
@@ -28,11 +27,16 @@ struct shared
     void *kaddr;
     char *file_name;
     off_t ofs;
+    uint32_t read_bytes;
     int share_count;
   };
 
 static struct hash shared_pages;
 static struct lock shared_lock;
+
+static bool page_load_shared (struct page *p);
+static void page_unload_shared (struct page *p);
+static bool page_add_shared (struct page *p);
 
 static unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a, const struct hash_elem *b,
@@ -61,15 +65,14 @@ page_done (void)
 }
 
 bool
-page_create (struct hash *page_table)
+page_create_table (struct hash *page_table)
 {
   return hash_init (page_table, page_hash, page_less, NULL);
 }
 
 bool
-page_new_page (void *page, enum page_location location, int fd,
-               const char *file_name, off_t ofs, uint32_t read_bytes,
-               uint32_t zero_bytes)
+page_new_page (void *page, enum page_flags flags, const char *file_name,
+               off_t ofs, uint32_t read_bytes)
 {
   if (pagedir_get_page (thread_current ()->pagedir, page) != NULL)
     return false;
@@ -77,40 +80,21 @@ page_new_page (void *page, enum page_location location, int fd,
   if (p == NULL)
     return false;
   p->uaddr = page;
-  p->location = location;
-  p->fd = -1;
-  p->file_name = NULL;
-  p->ofs = -1;
-  p->read_bytes = -1;
-  p->zero_bytes = -1;
-  switch (location)
+  p->flags = flags;
+  if (file_name != NULL)
     {
-    case PAGE_FILESYS:
-      p->fd = fd;
-      break;
-    case PAGE_EXEC:
-      p->read_bytes = read_bytes;
-      p->zero_bytes = zero_bytes;
-    case PAGE_SHARED:
-      {
-        int length = strlen (file_name) + 1;
-        p->file_name = malloc (length * sizeof(char));
-        if (p->file_name == NULL)
-          {
-            free (p);
-            return false;
-          }
-        memcpy (p->file_name, file_name, length);
-        p->ofs = ofs;
-        break;
-      }
-    case PAGE_SWAP:
-    case PAGE_ZERO:
-      break;
-    default:
-      free (p);
-      return false;
+      int length = strlen (file_name) + 1;
+      p->file_name = malloc (length * sizeof(char));
+      if (p->file_name == NULL)
+        {
+          free (p);
+          return false;
+        }
+      memcpy (p->file_name, file_name, length);
     }
+  p->ofs = ofs;
+  p->read_bytes = read_bytes;
+
   if (hash_insert (&thread_current ()->page_table, &p->pagehashelem) != NULL)
     {
       free (p->file_name);
@@ -125,7 +109,6 @@ page_remove_page (void *page)
 {
   struct hash_elem *e = hash_delete (&thread_current ()->page_table,
                                      page_lookup (page));
-
   if (e != NULL)
     {
       struct page *p = hash_entry (e, struct page, pagehashelem);
@@ -141,75 +124,62 @@ page_load_page (void *page, bool write)
   if (e == NULL)
     return false;
   struct page *p = hash_entry (e, struct page, pagehashelem);
-  if (p->location == PAGE_SHARED && write)
+  if (write && !(p->flags | PAGE_WRITABLE))
     return false;
 
-  switch (p->location)
+  bool shared = p->flags & PAGE_SHARED;
+  if (shared)
+    if (page_load_shared (p))
+      return true;
+
+  if (p->flags & PAGE_ZERO)
     {
-    case PAGE_FILESYS:
-      break;
-    case PAGE_ZERO:
-      {
-        void *kaddr = frame_get_page (PAL_USER | PAL_ZERO);
-        if (kaddr == NULL)
-          return false;
-        if (!install_page (page, kaddr, true))
-          {
-            frame_free_page (kaddr);
-            return false;
-          }
-        page_remove_page (page);
-        break;
-      }
-    case PAGE_EXEC:
-      if (!page_load_shared (page, p->file_name, p->ofs))
+      void *kaddr = frame_get_page (PAL_USER | PAL_ZERO);
+      if (kaddr == NULL)
+        return false;
+      if (!install_page (page, kaddr, write))
         {
-          lock_acquire (&file_lock);
-          struct file *file = filesys_open (p->file_name);
-          if (file == NULL)
-            {
-              lock_release (&file_lock);
-              return false;
-            }
-          if (!load_segment (file, p->ofs, page, p->read_bytes, p->zero_bytes,
-                             false))
-            {
-              file_close (file);
-              lock_release (&file_lock);
-              return false;
-            }
+          frame_free_page (kaddr);
+          return false;
+        }
+      p->flags ^= PAGE_ZERO;
+    }
+  else
+    {
+      lock_acquire (&file_lock);
+      struct file *file = filesys_open (p->file_name);
+      if (file == NULL)
+        {
+          lock_release (&file_lock);
+          return false;
+        }
+      if (!load_segment (file, p->ofs, page, p->read_bytes,
+                         PGSIZE - p->read_bytes, write))
+        {
           file_close (file);
           lock_release (&file_lock);
-          if (!page_add_shared (
-              pagedir_get_page (thread_current ()->pagedir, page),
-              p->file_name, p->ofs))
-            {
-              page_remove_page (page);
-              break;
-            }
+          return false;
         }
-      p->location = PAGE_SHARED;
-      p->read_bytes = -1;
-      p->zero_bytes = -1;
-      break;
-    case PAGE_SWAP:
-    case PAGE_SHARED:
-      break;
-    default:
-      return false;
+      file_close (file);
+      lock_release (&file_lock);
     }
+
+  if (shared)
+    if (!page_add_shared (p))
+      return false;
+
   return true;
 }
 
-bool
-page_load_shared (void *page, const char *file_name, off_t ofs)
+static bool
+page_load_shared (struct page *p)
 {
   lock_acquire (&shared_lock);
-  struct hash_elem *e = page_shared_lookup (file_name, ofs);
+  struct hash_elem *e = page_shared_lookup (p->file_name, p->ofs);
   if (e != NULL)
     {
       struct shared *s = hash_entry (e, struct shared, sharedhashelem);
-      if (install_page (page, s->kaddr, false))
+      if (install_page (p->uaddr, s->kaddr, p->flags | PAGE_WRITABLE))
         {
           s->share_count++;
           lock_release (&shared_lock);
@@ -220,23 +190,18 @@ page_load_shared (void *page, const char *file_name, off_t ofs)
   return false;
 }
 
-void
-page_unload_shared (void *page)
+static void
+page_unload_shared (struct page *p)
 {
-  struct hash_elem *e = page_lookup (page);
-  if (e == NULL)
-    return;
-  struct page *p = hash_entry (e, struct page, pagehashelem);
-  if (p->location != PAGE_SHARED)
+  if (!(p->flags | PAGE_SHARED))
     return;
 
   lock_acquire (&shared_lock);
-  e = page_shared_lookup (p->file_name, p->ofs);
-
+  struct hash_elem *e = page_shared_lookup (p->file_name, p->ofs);
   if (e != NULL)
     {
       struct shared *s = hash_entry (e, struct shared, sharedhashelem);
-      pagedir_clear_page (thread_current ()->pagedir, page);
+      pagedir_clear_page (thread_current ()->pagedir, p->uaddr);
       s->share_count--;
       if (s->share_count == 0)
         {
@@ -249,26 +214,26 @@ page_unload_shared (void *page)
   lock_release (&shared_lock);
 }
 
-bool
-page_add_shared (void *kaddr, const char *file_name, off_t ofs)
+static bool
+page_add_shared (struct page *p)
 {
   lock_acquire (&shared_lock);
-  struct hash_elem *e = page_shared_lookup (file_name, ofs);
+  struct hash_elem *e = page_shared_lookup (p->file_name, p->ofs);
   if (e == NULL)
     {
       struct shared *s = malloc (sizeof(struct shared));
       if (s == NULL)
         return false;
-      int length = strlen (file_name) + 1;
+      int length = strlen (p->file_name) + 1;
       s->file_name = malloc (length * sizeof(char));
       if (s->file_name == NULL)
         {
           free (s);
           return false;
         }
-      memcpy (s->file_name, file_name, length);
-      s->kaddr = kaddr;
-      s->ofs = ofs;
+      memcpy (s->file_name, p->file_name, length);
+      s->kaddr = pagedir_get_page (thread_current ()->pagedir, p->uaddr);
+      s->ofs = p->ofs;
       s->share_count = 1;
       hash_insert (&shared_pages, &s->sharedhashelem);
     }

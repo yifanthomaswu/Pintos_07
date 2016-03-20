@@ -5,26 +5,19 @@
 #include <stdbool.h>
 #include "filesys/off_t.h"
 
-enum page_location
+enum page_flags
 {
-  PAGE_FILESYS,
-  PAGE_SWAP,
-  PAGE_ZERO,
-  PAGE_SHARED,
-  PAGE_EXEC
+  PAGE_ZERO = 1,
+  PAGE_WRITABLE = 2,
+  PAGE_SHARED = 4
 };
 
 void page_init (void);
 void page_done (void);
-bool page_create (struct hash *page_table);
-bool page_new_page (void *page, enum page_location location, int fd,
-                    const char *file_name, off_t ofs, uint32_t read_bytes,
-                    uint32_t zero_bytes);
+bool page_create_table (struct hash *page_table);
+bool page_new_page (void *page, enum page_flags flags, const char *file_name,
+                    off_t ofs, uint32_t read_bytes);
 void page_remove_page (void *page);
 bool page_load_page (void *page, bool write);
-bool page_load_shared (void *page, const char *file_name, off_t ofs);
-void page_unload_shared (void *page);
-bool page_add_shared (void *kaddr, const char *file_name, off_t ofs);
-void page_remove_shared (const char *file_name, off_t ofs);
 
 #endif /* PAGE_H_ */

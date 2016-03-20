@@ -364,7 +364,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
-  if (!page_create (&t->page_table))
+  if (!page_create_table (&t->page_table))
     goto done;
   process_activate ();
 
@@ -395,7 +395,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
-  bool first_load = false;
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
@@ -425,7 +424,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
           if (validate_segment (&phdr, file)) 
             {
               bool writable = (phdr.p_flags & PF_W) != 0;
-              ASSERT (!writable);
               uint32_t file_page = phdr.p_offset & ~PGMASK;
               uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
               uint32_t page_offset = phdr.p_vaddr & PGMASK;
@@ -446,29 +444,25 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               void *page = (void *) mem_page;
-              if (first_load)
+              enum page_flags flags = writable ? PAGE_WRITABLE : PAGE_SHARED;
+              while (read_bytes > 0 || zero_bytes > 0)
                 {
-                  if (!page_new_page (page, PAGE_SHARED, -1, file_name,
-                                      file_page, -1, -1))
-                    goto done;
-                  if (!page_load_shared (page, file_name, file_page))
+                  uint32_t page_read_bytes =
+                      read_bytes < PGSIZE ? read_bytes : PGSIZE;
+                  if (page_read_bytes == 0)
                     {
-                      if (!load_segment (file, file_page, page, read_bytes,
-                                         zero_bytes, writable))
-                        {
-                          page_remove_page (page);
-                          goto done;
-                        }
-                      if (!page_add_shared (
-                          pagedir_get_page (thread_current ()->pagedir, page),
-                          file_name, file_page))
-                        page_remove_page (page);
+                      if (!page_new_page (page, flags | PAGE_ZERO, file_name,
+                                          file_page, 0))
+                        goto done;
                     }
-                  first_load = false;
+                  else if (!page_new_page (page, flags, file_name, file_page,
+                                           page_read_bytes))
+                    goto done;
+                  page += PGSIZE;
+                  file_page += PGSIZE;
+                  read_bytes -= page_read_bytes;
+                  zero_bytes -= PGSIZE - page_read_bytes;
                 }
-              else if (!page_new_page (page, PAGE_EXEC, -1, file_name,
-                                       file_page, read_bytes, zero_bytes))
-                goto done;
             }
           else
             goto done;
@@ -554,7 +548,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    or disk read error occurs. */
 bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+              uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
