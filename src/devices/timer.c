@@ -226,7 +226,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
 #ifdef USERPROG
 
-  if(active && thread_current ()->tid != 2)
+  if(active && thread_current ()->tid != 2) {
 	  // Every K ticks
 	if(timer_ticks () % K == 0) {
 	   struct thread *t = thread_current ();
@@ -245,6 +245,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 		  }
 	   }
 	}
+  }
 #endif
   ticks++;
   thread_tick ();
