@@ -189,14 +189,17 @@ page_load_page (void *page, bool write)
     }
   else
     {
-      lock_acquire (&file_lock);
+      if (!lock_held_by_current_thread (&file_lock))
+        lock_acquire (&file_lock);
       if (!load_segment (p->file, p->ofs, page, p->read_bytes,
                          PGSIZE - p->read_bytes, writable))
         {
-          lock_release (&file_lock);
+          if (lock_held_by_current_thread (&file_lock))
+            lock_release (&file_lock);
           return false;
         }
-      lock_release (&file_lock);
+      if (lock_held_by_current_thread (&file_lock))
+        lock_release (&file_lock);
     }
 
   if (share)
@@ -279,9 +282,11 @@ page_add_shared (struct page *p)
           return false;
         }
       memcpy (s->file_name, p->file_name, length);
-      lock_acquire (&file_lock);
+      if (!lock_held_by_current_thread (&file_lock))
+        lock_acquire (&file_lock);
       s->file = filesys_open (s->file_name);
-      lock_release (&file_lock);
+      if (lock_held_by_current_thread (&file_lock))
+        lock_release (&file_lock);
       if (s->file == NULL)
         {
           free (s->file_name);
