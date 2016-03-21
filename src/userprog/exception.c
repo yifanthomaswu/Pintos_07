@@ -155,8 +155,6 @@ page_fault (struct intr_frame *f)
 
   /* Exit with -1 if page fault is due to user program made an
      unallowed memory access. */
-//      printf("page_fault: %x\n", (int)fault_addr);
-//      printf("user: %d\n", user);
   if (user)
     {
       if (not_present && syscall_user_memory (fault_addr, write) != NULL)

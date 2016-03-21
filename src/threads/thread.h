@@ -33,15 +33,6 @@ struct child_tid
     tid_t tid;
   };
 
-/* Struct used to keep track of open files and their fds. */
-struct file_fd
-  {
-    struct list_elem filefdelem;
-    int fd;
-    char *file_name;
-    struct file *file;
-  };
-
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The

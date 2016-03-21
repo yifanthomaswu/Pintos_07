@@ -239,13 +239,22 @@ process_exit (void)
     {
       struct list_elem *e = list_pop_front (&cur->files);
       struct file_fd *f = list_entry (e, struct file_fd, filefdelem);
+      lock_acquire (&file_lock);
       file_close (f->file);
+      lock_release (&file_lock);
       free (f->file_name);
       free (f);
     }
   /* Frees all semaphores related to a process. */
   remove_process_sema (cur->tid);
 
+  while (!list_empty (&cur->mapids))
+    {
+      struct list_elem *e = list_pop_front (&cur->mapids);
+      struct memmap *m = list_entry (e, struct memmap, memmapelem);
+      pre_munmap (m);
+      free (m);
+    }
   page_destroy_table (&cur->page_table);
 
   /* Destroy the current process's page directory and switch back
@@ -445,6 +454,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
+              lock_release (&file_lock);
               void *page = (void *) mem_page;
               enum page_flags flags = writable ? PAGE_WRITABLE : PAGE_SHARE;
               while (read_bytes > 0 || zero_bytes > 0)
@@ -455,16 +465,23 @@ load (const char *file_name, void (**eip) (void), void **esp)
                     {
                       if (!page_new_page (page, flags | PAGE_ZERO, file_name,
                                           file_page, 0))
-                        goto done;
+                        {
+                          lock_acquire (&file_lock);
+                          goto done;
+                        }
                     }
                   else if (!page_new_page (page, flags, file_name, file_page,
                                            page_read_bytes))
-                    goto done;
+                    {
+                      lock_acquire (&file_lock);
+                      goto done;
+                    }
                   page += PGSIZE;
                   file_page += PGSIZE;
                   read_bytes -= page_read_bytes;
                   zero_bytes -= PGSIZE - page_read_bytes;
                 }
+              lock_acquire (&file_lock);
             }
           else
             goto done;

@@ -17,6 +17,7 @@ struct page
     void *uaddr;
     enum page_flags flags;
     char *file_name;
+    struct file *file;
     off_t ofs;
     uint32_t read_bytes;
   };
@@ -26,8 +27,10 @@ struct shared
     struct hash_elem sharedhashelem;
     void *kaddr;
     char *file_name;
+    struct file *file;
     off_t ofs;
     uint32_t read_bytes;
+    bool dirty;
     int share_count;
   };
 
@@ -82,6 +85,9 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct page *p = hash_entry (e, struct page, pagehashelem);
   page_unload_shared (p);
+  lock_acquire (&file_lock);
+  file_close (p->file);
+  lock_release (&file_lock);
   free (p->file_name);
   free (p);
 }
@@ -107,12 +113,31 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
           return false;
         }
       memcpy (p->file_name, file_name, length);
+      if (!(flags & PAGE_ZERO))
+        {
+          lock_acquire (&file_lock);
+          p->file = filesys_open (p->file_name);
+          lock_release (&file_lock);
+          if (p->file == NULL)
+            {
+              free (p->file_name);
+              free (p);
+              return false;
+            }
+        }
+      else
+        p->file = NULL;
     }
+  else
+    p->file_name = NULL;
   p->ofs = ofs;
   p->read_bytes = read_bytes;
 
   if (hash_insert (&thread_current ()->page_table, &p->pagehashelem) != NULL)
     {
+      lock_acquire (&file_lock);
+      file_close (p->file);
+      lock_release (&file_lock);
       free (p->file_name);
       free (p);
       return false;
@@ -126,11 +151,7 @@ page_remove_page (void *page)
   struct hash_elem *e = hash_delete (&thread_current ()->page_table,
                                      page_lookup (page));
   if (e != NULL)
-    {
-      struct page *p = hash_entry (e, struct page, pagehashelem);
-      free (p->file_name);
-      free (p);
-    }
+    page_destroy (e, NULL);
 }
 
 bool
@@ -165,20 +186,12 @@ page_load_page (void *page, bool write)
   else
     {
       lock_acquire (&file_lock);
-      struct file *file = filesys_open (p->file_name);
-      if (file == NULL)
-        {
-          lock_release (&file_lock);
-          return false;
-        }
-      if (!load_segment (file, p->ofs, page, p->read_bytes,
+      if (!load_segment (p->file, p->ofs, page, p->read_bytes,
                          PGSIZE - p->read_bytes, writable))
         {
-          file_close (file);
           lock_release (&file_lock);
           return false;
         }
-      file_close (file);
       lock_release (&file_lock);
     }
 
@@ -219,15 +232,25 @@ page_unload_shared (struct page *p)
   if (e != NULL)
     {
       struct shared *s = hash_entry (e, struct shared, sharedhashelem);
-      pagedir_clear_page (thread_current ()->pagedir, p->uaddr);
+      uint32_t *pd = thread_current ()->pagedir;
+      s->dirty = pagedir_is_dirty (pd, p->uaddr);
       s->share_count--;
       if (s->share_count == 0)
         {
           hash_delete (&shared_pages, e);
+          lock_acquire (&file_lock);
+          if (s->dirty)
+            {
+              file_seek (s->file, s->ofs);
+              file_write (s->file, p->uaddr, s->read_bytes);
+            }
+          file_close (s->file);
+          lock_release (&file_lock);
           frame_free_page (s->kaddr);
           free (s->file_name);
           free (s);
         }
+      pagedir_clear_page (pd, p->uaddr);
     }
   lock_release (&shared_lock);
 }
@@ -247,12 +270,24 @@ page_add_shared (struct page *p)
       if (s->file_name == NULL)
         {
           free (s);
+          lock_release (&shared_lock);
           return false;
         }
       memcpy (s->file_name, p->file_name, length);
+      lock_acquire (&file_lock);
+      s->file = filesys_open (s->file_name);
+      lock_release (&file_lock);
+      if (s->file == NULL)
+        {
+          free (s->file_name);
+          free (s);
+          lock_release (&shared_lock);
+          return false;
+        }
       s->kaddr = pagedir_get_page (thread_current ()->pagedir, p->uaddr);
       s->ofs = p->ofs;
       s->read_bytes = p->flags & PAGE_WRITABLE ? p->read_bytes : 0;
+      s->dirty = false;
       s->share_count = 1;
       hash_insert (&shared_pages, &s->sharedhashelem);
     }
