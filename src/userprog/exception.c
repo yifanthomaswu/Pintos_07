@@ -6,7 +6,6 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -157,8 +156,9 @@ page_fault (struct intr_frame *f)
 
   /* Exit with -1 if page fault is due to user program made an
      unallowed memory access. */
-  if (user)
+  if (user || is_user_vaddr (fault_addr))
     {
+//      printf("page_fault\n");
       if (not_present && syscall_user_memory (fault_addr, write) != NULL)
         return;
       pre_exit (-1);

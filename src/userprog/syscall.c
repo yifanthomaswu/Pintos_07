@@ -43,6 +43,7 @@ static struct lock statuses_lock;
 static struct lock processes_lock;
 
 static void syscall_handler (struct intr_frame *);
+static void memory_check_pages (const void *addr, int size);
 static inline int get_new_fd (void);
 static inline int get_new_mapid (void);
 static struct file_fd *get_file_fd (int fd);
@@ -241,6 +242,18 @@ syscall_user_memory (const void *vaddr, bool write)
     return NULL;
 }
 
+static void
+memory_check_pages (const void *addr, int size)
+{
+  const void *end_addr = addr + size;
+  while (addr < end_addr)
+    {
+      if (syscall_user_memory (addr, false) == NULL)
+        exit (-1);
+      addr += PGSIZE;
+    }
+}
+
 /* Returns and then increments the next available file descriptor. */
 static inline int
 get_new_fd (void)
@@ -339,9 +352,11 @@ pre_exit (int status)
   struct file * exec_file = t->exec_file;
   if (exec_file != NULL)
     {
-      lock_acquire (&file_lock);
+      if (!lock_held_by_current_thread (&file_lock))
+        lock_acquire (&file_lock);
       file_close (exec_file);
-      lock_release (&file_lock);
+      if (lock_held_by_current_thread (&file_lock))
+        lock_release (&file_lock);
     }
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
 }
@@ -350,8 +365,9 @@ pre_exit (int status)
 static tid_t
 exec (const char *cmd_line)
 {
-  if (syscall_user_memory (cmd_line, false) == NULL)
+  if (cmd_line == NULL)
     exit (-1);
+  memory_check_pages (cmd_line, strlen (cmd_line) + 1);
   tid_t new_tid = process_execute (cmd_line);
   if (new_tid != -1)
     {
@@ -402,8 +418,9 @@ wait (tid_t tid)
 static bool
 create (const char *file, unsigned initial_size)
 {
-  if (syscall_user_memory (file, false) == NULL)
+  if (file == NULL)
     exit (-1);
+  memory_check_pages (file, strlen (file) + 1);
   lock_acquire (&file_lock);
   bool success = filesys_create (file, initial_size);
   lock_release (&file_lock);
@@ -414,8 +431,9 @@ create (const char *file, unsigned initial_size)
 static bool
 remove (const char *file)
 {
-  if (syscall_user_memory (file, false) == NULL)
+  if (file == NULL)
     exit (-1);
+  memory_check_pages (file, strlen (file) + 1);
   lock_acquire (&file_lock);
   bool success = filesys_remove (file);
   lock_release (&file_lock);
@@ -428,8 +446,9 @@ remove (const char *file)
 static int
 open (const char *file)
 {
-  if (syscall_user_memory (file, false) == NULL)
+  if (file == NULL)
     exit (-1);
+  memory_check_pages (file, strlen (file) + 1);
   lock_acquire (&file_lock);
   struct file *current_file = filesys_open (file);
   lock_release (&file_lock);
@@ -525,13 +544,7 @@ read (int fd, void *buffer, unsigned size)
 static int
 write (int fd, const void *buffer, unsigned size)
 {
-  void *page = buffer;
-  while (page < buffer + size)
-    {
-      if (syscall_user_memory (page, false) == NULL)
-        exit (-1);
-      page += PGSIZE;
-    }
+  memory_check_pages (buffer, size);
   if (fd == STDOUT_FILENO)
     {
       /* Writes to standard output. */
