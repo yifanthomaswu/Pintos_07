@@ -4,6 +4,7 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -186,8 +187,38 @@ syscall_user_memory (const void *vaddr, bool write)
     {
       void *kaddr = pagedir_get_page (thread_current ()->pagedir, vaddr);
       if (kaddr == NULL)
+	{
         if (page_load_page (vaddr, write))
           kaddr = pagedir_get_page (thread_current ()->pagedir, vaddr);
+        else
+          {
+            if (vaddr < PHYS_BASE - (2048 * PGSIZE))
+              return NULL;
+            int num_pages = thread_current()->stack_pages;
+            if (num_pages == 2048)
+              return NULL;
+            uint8_t *kpage;
+            bool success;
+            kpage = frame_get_page (PAL_ZERO);
+            if (kpage != NULL)
+              {
+        	success = install_page (((uint8_t *) PHYS_BASE )
+        	                        - (num_pages * PGSIZE) - PGSIZE, kpage, true);
+        	if (success)
+        	  {
+//        	    printf("added stack page\n");
+        	    thread_current()->stack_pages++;
+        	    return syscall_user_memory(vaddr, true);
+        	  }
+        	else
+        	  {
+        	    frame_free_page (kpage);
+        	    return NULL;
+        	  }
+              }
+            return NULL;
+          }
+	}
       return kaddr;
     }
   else

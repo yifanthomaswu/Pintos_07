@@ -127,6 +127,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;             /* Page directory. */
     struct hash page_table;
+    int stack_pages;
 #endif
 
     /* Owned by thread.c. */

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
@@ -58,6 +59,7 @@ process_execute (const char *file_name)
   palloc_free_page (fn_copy_tmp);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  activate();
   return tid;
 }
 
@@ -606,7 +608,10 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
+	{
+	  thread_current()->stack_pages = 1;
         *esp = PHYS_BASE;
+	}
       else
         frame_free_page (kpage);
     }
