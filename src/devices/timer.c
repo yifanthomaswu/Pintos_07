@@ -12,6 +12,8 @@
 
 #define K 4 // K = TIME_SLICE
 
+static bool active = false;
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -50,6 +52,16 @@ timer_init (void)
   list_init (&sleep_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+}
+
+void activate(void)
+{
+  active = true;
+}
+
+void deactivate(void)
+{
+  active = false;
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -213,6 +225,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
 #ifdef USERPROG
+  if(active && thread_current ()->tid != 2)
 	if(timer_ticks () % K == 0) {
 	   struct thread *t = thread_current ();
 	   uint32_t *pd = t->pagedir;

@@ -8,6 +8,8 @@
 #define TIMER_FREQ 100
 
 void timer_init (void);
+void activate(void);
+void deactivate(void);
 void timer_calibrate (void);
 
 int64_t timer_ticks (void);
