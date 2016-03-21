@@ -120,6 +120,7 @@ struct thread
     uint32_t *pagedir;             /* Page directory. */
     struct hash page_table;
     int stack_pages;
+    bool active_proc;
 #endif
 
     /* Owned by thread.c. */

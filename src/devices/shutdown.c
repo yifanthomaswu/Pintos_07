@@ -29,7 +29,6 @@ static void print_stats (void);
 void
 shutdown (void)
 {
-  deactivate();
   switch (how)
     {
     case SHUTDOWN_POWER_OFF:

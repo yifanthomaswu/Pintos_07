@@ -58,8 +58,7 @@ process_execute (const char *file_name)
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   palloc_free_page (fn_copy_tmp);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
-  activate();
+    palloc_free_page (fn_copy);
   return tid;
 }
 
@@ -169,6 +168,8 @@ start_process (void *file_name_)
   if (!success)
     thread_exit ();
 
+  thread_current()->active_proc = true;
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -227,6 +228,7 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  cur->active_proc = false;
 
   /* Frees all child tids a process holds. */
   while (!list_empty (&cur->children))
