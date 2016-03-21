@@ -1,6 +1,7 @@
 #include "vm/page.h"
 #include <debug.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -11,17 +12,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 
-struct page
-  {
-    struct hash_elem pagehashelem;
-    void *uaddr;
-    enum page_flags flags;
-    char *file_name;
-    struct file *file;
-    off_t ofs;
-    uint32_t read_bytes;
-  };
-
+/* A struct for a shared page */
 struct shared
   {
     struct hash_elem sharedhashelem;
@@ -34,7 +25,9 @@ struct shared
     int share_count;
   };
 
+/* hash_table for all shared pages */
 static struct hash shared_pages;
+/* Lock to synchronise access to shared_pages */
 static struct lock shared_lock;
 
 static bool page_load_shared (struct page *p);
@@ -45,7 +38,7 @@ static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 static unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a, const struct hash_elem *b,
                        void *aux UNUSED);
-static struct hash_elem *page_lookup (const void *uaddr);
+//static struct hash_elem *page_lookup (const void *uaddr);
 static unsigned page_shared_hash (const struct hash_elem *e,
                                   void *aux UNUSED);
 static bool page_shared_less (const struct hash_elem *a,
@@ -54,6 +47,7 @@ static bool page_shared_less (const struct hash_elem *a,
 static struct hash_elem *page_shared_lookup (const char *file_name,
                                              off_t ofs);
 
+/* Initialises global static variables */
 void
 page_init (void)
 {
@@ -62,24 +56,28 @@ page_init (void)
   lock_init (&shared_lock);
 }
 
+/* Destroys the shared_pages hash_table */
 void
 page_done (void)
 {
   hash_destroy (&shared_pages, NULL);
 }
 
+/* Initialises the hash_table page_table */
 bool
 page_create_table (struct hash *page_table)
 {
   return hash_init (page_table, page_hash, page_less, NULL);
 }
 
+/* Destroys the page_table hash_table */
 void
 page_destroy_table (struct hash *page_table)
 {
   hash_destroy (page_table, page_destroy);
 }
 
+/* Removes page from hash_table and frees it */
 static void
 page_destroy (struct hash_elem *e, void *aux UNUSED)
 {
@@ -92,16 +90,19 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
   free (p);
 }
 
+/* Add new page to the page_table. Returns success state */
 bool
 page_new_page (void *page, enum page_flags flags, const char *file_name,
                off_t ofs, uint32_t read_bytes)
 {
   if (pagedir_get_page (thread_current ()->pagedir, page) != NULL)
     return false;
+  // set up the page
   struct page *p = malloc (sizeof(struct page));
   if (p == NULL)
     return false;
   p->uaddr = page;
+  p->last_accessed_time = timer_ticks();
   p->flags = flags;
   if (file_name != NULL)
     {
@@ -133,6 +134,7 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
   p->ofs = ofs;
   p->read_bytes = read_bytes;
 
+  // Inset the page into the page_table
   if (hash_insert (&thread_current ()->page_table, &p->pagehashelem) != NULL)
     {
       lock_acquire (&file_lock);
@@ -145,6 +147,7 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
   return true;
 }
 
+/* Removes page from page_table */
 void
 page_remove_page (void *page)
 {
@@ -255,6 +258,7 @@ page_unload_shared (struct page *p)
   lock_release (&shared_lock);
 }
 
+/* Add a page to shared_pages. Returns success state */
 static bool
 page_add_shared (struct page *p)
 {
@@ -298,6 +302,7 @@ page_add_shared (struct page *p)
   return true;
 }
 
+/* Hash helper for the page_table hash_table */
 static unsigned
 page_hash (const struct hash_elem *e, void *aux UNUSED)
 {
@@ -305,6 +310,7 @@ page_hash (const struct hash_elem *e, void *aux UNUSED)
   return hash_bytes (&p->uaddr, sizeof p->uaddr);
 }
 
+/* Hash helper for the page_table hash_table */
 static bool
 page_less (const struct hash_elem *a, const struct hash_elem *b,
            void *aux UNUSED)
@@ -313,7 +319,8 @@ page_less (const struct hash_elem *a, const struct hash_elem *b,
   hash_entry (b, struct page, pagehashelem)->uaddr;
 }
 
-static struct hash_elem *
+/* Returns the hash_elem corresponding to the given user virtual address */
+struct hash_elem *
 page_lookup (const void *uaddr)
 {
   struct page p;
@@ -321,6 +328,7 @@ page_lookup (const void *uaddr)
   return hash_find (&thread_current ()->page_table, &p.pagehashelem);
 }
 
+/* Hash helper for the shared_pages hash_table */
 static unsigned
 page_shared_hash (const struct hash_elem *e, void *aux UNUSED)
 {
@@ -328,6 +336,7 @@ page_shared_hash (const struct hash_elem *e, void *aux UNUSED)
   return hash_string (s->file_name) ^ hash_int (s->ofs);
 }
 
+/* Hash helper for the shared_pages hash_table */
 static bool
 page_shared_less (const struct hash_elem *a, const struct hash_elem *b,
                   void *aux UNUSED)
@@ -341,6 +350,7 @@ page_shared_less (const struct hash_elem *a, const struct hash_elem *b,
     return cmp < 0;
 }
 
+/* Returns the hash_elem corresponding to the given file_name and offset */
 static struct hash_elem *
 page_shared_lookup (const char *file_name, off_t ofs)
 {

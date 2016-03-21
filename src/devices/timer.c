@@ -1,13 +1,19 @@
 #include "devices/timer.h"
 #include <debug.h>
 #include <inttypes.h>
+#include <hash.h>
 #include <round.h>
 #include <stdio.h>
 #include "devices/pit.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include "vm/page.h"
+
+#define K 4 // K = TIME_SLICE
+
+static bool active = false;
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -46,6 +52,16 @@ timer_init (void)
   list_init (&sleep_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+}
+
+void activate(void)
+{
+  active = true;
+}
+
+void deactivate(void)
+{
+  active = false;
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -208,6 +224,29 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+#ifdef USERPROG
+
+  if(active && thread_current ()->tid != 2) {
+	  // Every K ticks
+	if(timer_ticks () % K == 0) {
+	   struct thread *t = thread_current ();
+	   uint32_t *pd = t->pagedir;
+	   struct hash_iterator i;
+	   hash_first (&i, &t->page_table);
+	   while (hash_next (&i))
+	   {
+		  // If a page was accessed, update it's last_accessed field
+		   struct page *p = hash_entry (hash_cur (&i), struct page, pagehashelem);
+		  if(pagedir_is_accessed(pd, p->uaddr)) {
+			  // set last_accessed_time to the current number of timer_ticks
+			  p->last_accessed_time = timer_ticks ();
+			  // reset the accessed but of the page
+			  pagedir_set_accessed(pd, p->uaddr, false);
+		  }
+	   }
+	}
+  }
+#endif
   ticks++;
   thread_tick ();
 
