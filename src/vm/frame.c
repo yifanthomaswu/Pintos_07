@@ -134,8 +134,8 @@ do_swap:
 		    uint32_t *candidate_victim_pd = candidate_victims_pd[n];
 		    if (candidate_victim != NULL)
 		      {
-			swap_out(candidate_victims_pd, candidate_victim);
-			pagedir_set_dirty(candidate_victims_pd, candidate_victim, false);
+			swap_out(candidate_victim_pd, candidate_victim);
+			pagedir_set_dirty(candidate_victim_pd, candidate_victim, false);
 		      }
 		  }
 
