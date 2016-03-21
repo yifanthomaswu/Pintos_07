@@ -104,6 +104,7 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
   p->uaddr = page;
   p->last_accessed_time = timer_ticks();
   p->flags = flags;
+  p->pinned = false;
   if (file_name != NULL)
     {
       int length = strlen (file_name) + 1;
@@ -176,7 +177,7 @@ page_load_page (void *page, bool write)
 
   if (p->flags & PAGE_ZERO)
     {
-      void *kaddr = frame_get_page (PAL_USER | PAL_ZERO);
+      void *kaddr = frame_get_page (PAL_USER | PAL_ZERO, page);
       if (kaddr == NULL)
         return false;
       if (!install_page (page, kaddr, writable))

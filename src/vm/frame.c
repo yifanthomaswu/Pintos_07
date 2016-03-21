@@ -8,7 +8,6 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
-#include "vm/page.h"
 #include "vm/swap.h"
 
 #define TAU 50 // parameter for page age (in timer ticks)
@@ -16,12 +15,12 @@
 
 /* frame_table entries contain the virtual kernel address and the page_directory */
 struct frame
-  {
-    struct hash_elem framehashelem;
-    struct list_elem framelistelem;
-    void *kaddr;
-    uint32_t pd;
-  };
+{
+  struct hash_elem framehashelem;
+  struct list_elem framelistelem;
+  void *kaddr;
+  struct page *page;
+};
 
 static struct hash frame_table; // frame_table
 static struct lock frame_lock; // Lock to synchronise frame_table changes
@@ -49,139 +48,140 @@ frame_init (void)
 /* Ensures a free frame, either by swapping out a page or by
  * calling palloc_get_page */
 void *
-frame_get_page (enum palloc_flags flags)
+frame_get_page (enum palloc_flags flags, struct page *current_page)
 {
-	ASSERT (flags && PAL_USER);
+  ASSERT (flags && PAL_USER);
 
-	void *victim = palloc_get_page (flags);
-	// If there is no free frame:
-	if (victim == NULL) {
-		// Swap algorithm: WSClock
+  void *page = palloc_get_page (flags);
+  // If there is no free frame:
+  if (page == NULL) {
+      // Swap algorithm: WSClock
 
-		// Set up locals
-		void *candidate_victims[VICTIM_CANDIDATES];
-		uint32_t *candidate_victims_pd[VICTIM_CANDIDATES];
-		int num_candidate = 0;
-		int64_t age = 0;
-		uint32_t *pd;
-		uint32_t *victim_pd;
-		struct list_elem *first_elem = hand;
-page_swapping:
-		// If the hand points to the lists tail, start over from beginning of list
-		if (hand == list_tail(&clock))
-			hand = list_begin(&clock);
-		// acquire frame that "hand" points to
-		struct frame *e = list_entry(hand, struct frame, framelistelem);
-		// get this frame's page's page_directory
-		pd = e->pd;
-		// and this frame's virtual kernel address
-		void *e_kaddr = e->kaddr;
-		// get the page that is stored in that frame
-		struct page *page = hash_entry(page_lookup(e_kaddr), struct page, pagehashelem);
-		// find the age of last access for this page
-		int64_t page_age = timer_elapsed(page->last_accessed_time);
-		if(page_age > TAU) {
-			// If it's older than the parameter TAU,
-			// update local variables to store best victim yet
-			age = page_age;
-			victim = e_kaddr;
-			victim_pd = pd;
-			if(!pagedir_is_dirty(pd, e_kaddr)) {
-				// If the page is clean, choose this page and perform swap
-				goto do_swap;
-			}
-			//if the page is dirty,
-			if (num_candidate < VICTIM_CANDIDATES)
-			  {
-				// and if there is space for extra victims to be swapped,
-				// add the page to the candidate_victims array
-			    candidate_victims[num_candidate] = e_kaddr;
-			    candidate_victims_pd[num_candidate] = pd;
-			    num_candidate++;
-			  }
+      // Set up locals
+      struct frame *victim;
+      struct frame *candidate_victims[VICTIM_CANDIDATES];
+      int num_candidate = 0;
+      int64_t age = 0;
+      struct list_elem *first_elem = hand;
+      page_swapping:
+      // If the hand points to the lists tail, start over from beginning of list
+      if (hand == list_tail(&clock))
+	hand = list_begin(&clock);
+      // acquire frame that "hand" points to
+      struct frame *e = list_entry(hand, struct frame, framelistelem);
+      // get this frame's page's page_directory
+      struct page *e_page = e->page;
+      if(!e_page->pinned) {
+	  void *e_uaddr = e_page->uaddr;
+	  // find the age of last access for this page
+	  int64_t page_age = timer_elapsed(e_page->last_accessed_time);
+	  if(page_age > TAU) {
+	      // If it's older than the parameter TAU,
+	      // update local variables to store best victim yet
+	      age = page_age;
+	      victim = e;
+	      if(!pagedir_is_dirty(e_page->pd, e_uaddr)) {
+		  // If the page is clean, choose this page and perform swap
+		  goto do_swap;
+	      }
+	      //if the page is dirty,
+	      if (num_candidate < VICTIM_CANDIDATES)
+		{
+		  // and if there is space for extra victims to be swapped,
+		  // add the page to the candidate_victims array
+		  candidate_victims[num_candidate] = e;
+		  num_candidate++;
 		}
-		else {
-			// if the page is not older than TAU,
-			if(page_age > age) {
-				// but is the oldest page yet,
-				// update locals
-				age = page_age;
-				victim = e_kaddr;
-				victim_pd = pd;
-			}
+	  }
+	  else {
+	      // if the page is not older than TAU,
+	      if(page_age > age) {
+		  // but is the oldest page yet,
+		  // update locals
+		  age = page_age;
+		  victim = e;
+	      }
+	  }
+      }
+      // Move hand up one entry
+      hand = list_next(hand);
+      // If the clock is fully traversed, do the swap, otherwise restart algorithm
+      if (hand != first_elem)
+	goto page_swapping;
+
+      do_swap:
+      // If the page is clean, it doesn't have to be copied, so just return true
+      if(pagedir_is_dirty(victim->page->pd, victim->page->uaddr)) {
+	  // Perform the swap of the victim
+	  swap_out(victim->page->pd, victim->page->tid, victim->kaddr);
+	  victim->page->flags |= PAGE_SWAP;
+	  // if victim in candidate_victim[] this means it will do nothing
+	  pagedir_set_dirty(victim->page->pd, victim->page->uaddr, false);
+	  // free the page inside the frame
+	  frame_free_page(victim->kaddr);
+	  // get new page using palloc_get_page
+	  page = palloc_get_page (flags);
+	  // release lock after the this so new page can be read in into victim
+	  int n;
+	  for (n = 0; n < VICTIM_CANDIDATES; n++)
+	    {
+	      // swap all the candidates out as well
+	      struct frame *candidate_victim = candidate_victims[n];
+	      if (candidate_victim != NULL)
+		{
+		  swap_out(candidate_victim->page->pd, candidate_victim->page->tid, candidate_victim->kaddr);
+		  pagedir_set_dirty(candidate_victim->page->pd, candidate_victim->page->uaddr, false);
 		}
-		// Move hand up one entry
-		hand = list_next(hand);
-		// If the clock is fully traversed, do the swap, otherwise restart algorithm
-		if (hand != first_elem)
-			goto page_swapping;
+	    }
+      }
+      else {
+	  victim->page->flags |= PAGE_FILESYS;
+      }
+      // Remove mapping in pagedir
+      pagedir_clear_page(victim->page->pd, victim->page->uaddr);
 
-do_swap:
-		// Perform the swap of the victim
-		swap_out(victim_pd, victim);
-		// if victim in candidate_victim[] this means it will do nothing
-		pagedir_set_dirty(victim_pd, victim, false);
-		// free the page inside the frame
-		frame_free_page(victim);
-		// get new page using palloc_get_page
-		victim = palloc_get_page (flags);
-		// release lock after the this so new page can be read in into victim
-		int n;
-		for (n = 0; n < VICTIM_CANDIDATES; n++)
-		  {
-			// swap all the candidates out as well
-		    void *candidate_victim = candidate_victims[n];
-		    uint32_t *candidate_victim_pd = candidate_victims_pd[n];
-		    if (candidate_victim != NULL)
-		      {
-			swap_out(candidate_victim_pd, candidate_victim);
-			pagedir_set_dirty(candidate_victim_pd, candidate_victim, false);
-		      }
-		  }
+  }
+  // Set up the frame
+  struct frame *f = malloc (sizeof(struct frame));
+  if (f == NULL)
+    PANIC ("frame_get_multiple: out of memory");
+  f->kaddr = page;
+  f->page = current_page;
+  // insert frame into frame_table
+  lock_acquire (&frame_lock);
+  hash_insert (&frame_table, &f->framehashelem);
+  lock_release (&frame_lock);
 
-
-	}
-	// Set up the frame
-	struct frame *f = malloc (sizeof(struct frame));
-	if (f == NULL)
-		PANIC ("frame_get_multiple: out of memory");
-	f->kaddr = victim;
-	f->pd = thread_current ()->pagedir;
-	// insert frame into frame_table
-	lock_acquire (&frame_lock);
-	hash_insert (&frame_table, &f->framehashelem);
-	lock_release (&frame_lock);
-
-	// insert frame into clock
-	lock_acquire (&clock_lock);
-	list_push_back(&clock, &f->framelistelem);
-	lock_release (&clock_lock);
-	return victim;
+  // insert frame into clock
+  lock_acquire (&clock_lock);
+  list_push_back(&clock, &f->framelistelem);
+  lock_release (&clock_lock);
+  return page;
 }
 
 /* Frees frame entry and corresponding page */
 void
 frame_free_page (void *page)
 {
-      void *addr = page;
+  void *addr = page;
 
-      // Remove frame from frame_table
-      lock_acquire (&frame_lock);
-      struct hash_elem *he = hash_delete (&frame_table, frame_lookup (addr));
-      lock_release (&frame_lock);
+  // Remove frame from frame_table
+  lock_acquire (&frame_lock);
+  struct hash_elem *he = hash_delete (&frame_table, frame_lookup (addr));
+  lock_release (&frame_lock);
 
-      struct frame *entry = hash_entry (he, struct frame, framehashelem);
+  struct frame *entry = hash_entry (he, struct frame, framehashelem);
 
-      // Remove frame from clock
-      lock_acquire (&clock_lock);
-      list_remove (&entry->framelistelem);
-      lock_release (&clock_lock);
+  // Remove frame from clock
+  lock_acquire (&clock_lock);
+  list_remove (&entry->framelistelem);
+  lock_release (&clock_lock);
 
-      // free frame
-      if (he != NULL)
-        free (entry);
-      // free page
-      palloc_free_page (page);
+  // free frame
+  if (he != NULL)
+    free (entry);
+  // free page
+  palloc_free_page (page);
 }
 
 /* Hash helper for the swap_table hash_table */

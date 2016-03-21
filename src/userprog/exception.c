@@ -96,6 +96,7 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       thread_exit (); 
+      /* no break */
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
@@ -104,6 +105,7 @@ kill (struct intr_frame *f)
          here.)  Panic the kernel to make the point.  */
       intr_dump_frame (f);
       PANIC ("Kernel bug - unexpected interrupt in kernel"); 
+      /* no break */
 
     default:
       /* Some other code segment?  Shouldn't happen.  Panic the

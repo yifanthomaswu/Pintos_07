@@ -5,6 +5,7 @@
 #include <string.h>
 #include "devices/block.h"
 #include "threads/synch.h"
+#include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
@@ -23,12 +24,13 @@ static struct hash swap_table;
 static unsigned swap_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool swap_less (const struct hash_elem *a, const struct hash_elem *b,
                        void *aux UNUSED);
-static struct hash_elem *swap_lookup (void *uaddr);
+static struct hash_elem *swap_lookup (void *kaddr, tid_t tid);
 
 /* The swap-table elements contain the virtual user address and the sector they are in */
 struct swap {
   struct hash_elem swaphashelem;
-  void *uaddr;
+  tid_t tid;
+  void *kaddr;
   uint32_t sector;
 };
 
@@ -46,9 +48,9 @@ swap_init (void)
 
 /* Swaps a page from the swap partition back into memory */
 bool
-swap_in(void *page_addr)
+swap_in(void *kaddr)
 {
-  int64_t bm_sector = swap_free(page_addr);
+  int64_t bm_sector = swap_free(kaddr);
   // if doesn't exist, return failure of loading in
   if (bm_sector == -1)
     return false;
@@ -61,7 +63,7 @@ swap_in(void *page_addr)
   for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
       block_read(swap_block, bm_sector + i, buffer);
-      memcpy(page_addr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
+      memcpy(kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
     }
   free(buffer);
   // Loading back successful, return true
@@ -100,12 +102,8 @@ swap_free(void *page_addr)
 
 /* Swaps a page from memory into the swap partition */
 bool
-swap_out(uint32_t *pd, void *page_addr)
+swap_out(uint32_t *pd, tid_t tid, void *kaddr)
 {
-	// If the page is clean, it doesn't have to be copied, so just return true
-  if(!pagedir_is_dirty(pd, page_addr))
-    return true;
-
   // mark swap_table entry in bitmap
   size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, SECTORS_IN_PAGE, false);
   // Panic the kernel if there is no space on the partition
@@ -115,8 +113,9 @@ swap_out(uint32_t *pd, void *page_addr)
   struct swap *s = malloc (sizeof(struct swap));
   if (s == NULL)
     PANIC ("swap_multiple: out of memory");
-  s->uaddr = page_addr;
+  s->kaddr = kaddr;
   s->sector = bm_sector;
+  s->tid = tid;
   // Insert the entry into the swap_table
   lock_acquire (&swap_lock);
   hash_insert (&swap_table, &s->swaphashelem);
@@ -128,7 +127,7 @@ swap_out(uint32_t *pd, void *page_addr)
   int i;
   for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
-      memcpy(buffer, page_addr + (i*BLOCK_SECTOR_SIZE), BLOCK_SECTOR_SIZE);
+      memcpy(buffer, kaddr + (i*BLOCK_SECTOR_SIZE), BLOCK_SECTOR_SIZE);
       block_write(swap_block, bm_sector + i, buffer);
     }
   free(buffer);
@@ -140,7 +139,7 @@ static unsigned
 swap_hash (const struct hash_elem *e, void *aux UNUSED)
 {
   const struct swap *s = hash_entry (e, struct swap, swaphashelem);
-  return hash_bytes (&s->uaddr, sizeof s->uaddr);
+  return hash_bytes (s->kaddr, sizeof s->kaddr) ^ hash_int (s->tid);
 }
 
 /* Hash helper for the swap_table hash_table */
@@ -148,18 +147,21 @@ static bool
 swap_less (const struct hash_elem *a, const struct hash_elem *b,
            void *aux UNUSED)
 {
-  return hash_entry (a, struct swap, swaphashelem)->uaddr <
-      hash_entry (b, struct swap, swaphashelem)->uaddr;
+	struct swap *s1 = hash_entry (a, struct swap, swaphashelem);
+	struct swap *s2 = hash_entry (b, struct swap, swaphashelem);
+	if (s1->tid == s2->tid) {
+		return s1->kaddr < s2->kaddr;
+	}
+	return s1->tid < s2->tid;
 }
 
 /* Returns the hash_elem corresponding to the given virtual user address */
 static struct hash_elem *
-swap_lookup (void *uaddr)
+swap_lookup (void *kaddr, tid_t tid)
 {
   //Caller needs to hold frame_lock already
   struct swap s;
-  struct hash_elem *e;
-  s.uaddr = uaddr;
-  e = hash_find (&swap_table, &s.swaphashelem);
-  return e;
+  s.kaddr = kaddr;
+  s.tid = tid;
+  return hash_find (&swap_table, &s.swaphashelem);
 }
