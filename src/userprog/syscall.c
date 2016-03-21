@@ -118,6 +118,7 @@ syscall_handler (struct intr_frame *f)
         exit (-1);
       else
         arg2 = *(sp + 3);
+        /* no break */
     case SYS_CREATE:
     case SYS_SEEK:
     case SYS_MMAP:
@@ -126,6 +127,7 @@ syscall_handler (struct intr_frame *f)
         exit (-1);
       else
         arg1 = *(sp + 2);
+        /* no break */
     case SYS_EXIT:
     case SYS_EXEC:
     case SYS_WAIT:
