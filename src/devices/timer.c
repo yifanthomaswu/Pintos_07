@@ -213,6 +213,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
 #ifdef USERPROG
+	// Every K ticks
 	if(timer_ticks () % K == 0) {
 	   struct thread *t = thread_current ();
 	   uint32_t *pd = t->pagedir;
@@ -222,8 +223,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
 	   {
 		  // If a page was accessed, update it's last_accessed field
 		   struct page *p = hash_entry (hash_cur (&i), struct page, pagehashelem);
-		  if(pagedir_is_accessed(pd, p->uaddr)) { //TODO: maybe kaddr instead of uaddr
+		  if(pagedir_is_accessed(pd, p->uaddr)) {
+			  // set last_accessed_time to the current number of timer_ticks
 			  p->last_accessed_time = timer_ticks ();
+			  // reset the accessed but of the page
 			  pagedir_set_accessed(pd, p->uaddr, false);
 		  }
 	   }

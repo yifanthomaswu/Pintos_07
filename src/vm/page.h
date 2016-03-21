@@ -13,6 +13,7 @@ enum page_flags
   PAGE_FRAME = 8
 };
 
+/* A struct for pages, containing fields used to handle page_faults */
 struct page
   {
     struct hash_elem pagehashelem;
