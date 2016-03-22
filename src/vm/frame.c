@@ -50,7 +50,7 @@ frame_init (void)
 void *
 frame_get_page (enum palloc_flags flags, struct page *current_page)
 {
-  ASSERT (flags && PAL_USER);
+  ASSERT (flags & PAL_USER);
 
   void *page = palloc_get_page (flags);
   // If there is no free frame:

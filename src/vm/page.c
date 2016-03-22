@@ -38,7 +38,7 @@ static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 static unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a, const struct hash_elem *b,
                        void *aux UNUSED);
-//static struct hash_elem *page_lookup (const void *uaddr);
+static struct hash_elem *page_lookup (const void *uaddr);
 static unsigned page_shared_hash (const struct hash_elem *e,
                                   void *aux UNUSED);
 static bool page_shared_less (const struct hash_elem *a,
@@ -146,6 +146,15 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
       return false;
     }
   return true;
+}
+
+struct page *
+page_get_page (const void *page)
+{
+  struct hash_elem *e = page_lookup (page);
+  if (e == NULL)
+    return NULL;
+  return hash_entry (e, struct page, pagehashelem);
 }
 
 /* Removes page from page_table */

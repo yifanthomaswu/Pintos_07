@@ -587,7 +587,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = frame_get_page (PAL_USER);
+      struct page *p = page_get_page (upage);
+      if (p == NULL)
+        return false;
+      uint8_t *kpage = frame_get_page (PAL_USER, p);
       if (kpage == NULL)
         return false;
 
@@ -617,22 +620,34 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp)
 {
+  void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   uint8_t *kpage;
   bool success = false;
 
-  kpage = frame_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  if (!page_new_page (upage, PAGE_WRITABLE, NULL, 0, 0))
+    return success;
+  struct page *p = page_get_page (upage);
+  if (p == NULL)
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      page_remove_page (upage);
+      return success;
+    }
+  kpage = frame_get_page (PAL_USER | PAL_ZERO, p);
+  if (kpage != NULL)
+    {
+      success = install_page (upage, kpage, true);
       if (success)
-	{
-	  thread_current()->stack_pages = 1;
-        *esp = PHYS_BASE;
-	}
+        {
+          thread_current ()->stack_pages = 1;
+          *esp = PHYS_BASE;
+        }
       else
-        frame_free_page (kpage);
+        {
+          page_remove_page (upage);
+          frame_free_page (kpage);
+        }
     }
   return success;
 }

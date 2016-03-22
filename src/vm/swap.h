@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "threads/thread.h"
 
 void swap_init (void);
 bool swap_out(uint32_t *, tid_t, void *);
