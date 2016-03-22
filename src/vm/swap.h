@@ -3,9 +3,10 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "vm/page.h"
 
 void swap_init (void);
-bool swap_out(uint32_t *, tid_t, void *);
+bool swap_out(struct page *);
 int64_t swap_free(void *page_addr);
-bool swap_in(void *);
+bool swap_in(struct page *);
 #endif /* vm_swap_h_*/

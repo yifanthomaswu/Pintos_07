@@ -10,4 +10,6 @@ void *frame_get_page (enum palloc_flags flags, struct page *current_page);
 void frame_free_page (void *page);
 void frame_free_multiple (void *pages, size_t page_cnt);
 
+struct hash_elem *frame_lookup (void *kaddr);
+
 #endif /* vm_frame_h */

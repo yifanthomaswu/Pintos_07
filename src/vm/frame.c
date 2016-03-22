@@ -32,7 +32,6 @@ static struct list_elem *hand; // list_elem pointing to an element of the clock
 static unsigned frame_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool frame_less (const struct hash_elem *a, const struct hash_elem *b,
                         void *aux UNUSED);
-static struct hash_elem *frame_lookup (void *kaddr);
 
 /* Initialises the global static variables */
 void
@@ -202,7 +201,7 @@ frame_less (const struct hash_elem *a, const struct hash_elem *b,
 }
 
 /* Returns the hash_elem corresponding to the given virtual kernel address */
-static struct hash_elem *
+struct hash_elem *
 frame_lookup (void *kaddr)
 {
   //Caller needs to hold frame_lock already

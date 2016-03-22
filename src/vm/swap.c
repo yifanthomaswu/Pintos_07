@@ -9,6 +9,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "vm/frame.h"
 
 #define SECTORS_IN_PAGE 8
 
@@ -48,9 +49,12 @@ swap_init (void)
 
 /* Swaps a page from the swap partition back into memory */
 bool
-swap_in(void *kaddr)
+swap_in(struct page *page)
 {
-  int64_t bm_sector = swap_free(kaddr);
+  struct frame *f = hash_entry(frame_lookup(page->kaddr), struct frame, framehashelem);
+  if (!swap_out(f->page))
+    PANIC("ERROR: couldn't swap out page to swap in another one\n");
+  int64_t bm_sector = swap_free(page);
   // if doesn't exist, return failure of loading in
   if (bm_sector == -1)
     return false;
@@ -63,7 +67,7 @@ swap_in(void *kaddr)
   for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
       block_read(swap_block, bm_sector + i, buffer);
-      memcpy(kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
+      memcpy(page->kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
     }
   free(buffer);
   // Loading back successful, return true
@@ -72,11 +76,11 @@ swap_in(void *kaddr)
 
 /* Removes page from swap_table and updates bitmap */
 int64_t
-swap_free(void *page_addr)
+swap_free(struct page *page)
 {
 	// Acquire the swap table element to delete
   lock_acquire (&swap_lock);
-  struct swap *s = hash_entry(hash_find(&swap_table, swap_lookup(page_addr)), struct swap, swaphashelem);
+  struct swap *s = hash_entry(swap_lookup(page->kaddr, page->tid), struct swap, swaphashelem);
   lock_release (&swap_lock);
 
   // If element is found:
@@ -102,7 +106,7 @@ swap_free(void *page_addr)
 
 /* Swaps a page from memory into the swap partition */
 bool
-swap_out(uint32_t *pd, tid_t tid, void *kaddr)
+swap_out(struct page *page)
 {
   // mark swap_table entry in bitmap
   size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, SECTORS_IN_PAGE, false);
@@ -113,9 +117,9 @@ swap_out(uint32_t *pd, tid_t tid, void *kaddr)
   struct swap *s = malloc (sizeof(struct swap));
   if (s == NULL)
     PANIC ("swap_multiple: out of memory");
-  s->kaddr = kaddr;
+  s->kaddr = page->kaddr;
   s->sector = bm_sector;
-  s->tid = tid;
+  s->tid = page->tid;
   // Insert the entry into the swap_table
   lock_acquire (&swap_lock);
   hash_insert (&swap_table, &s->swaphashelem);
@@ -127,7 +131,7 @@ swap_out(uint32_t *pd, tid_t tid, void *kaddr)
   int i;
   for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
-      memcpy(buffer, kaddr + (i*BLOCK_SECTOR_SIZE), BLOCK_SECTOR_SIZE);
+      memcpy(buffer, page->kaddr + (i*BLOCK_SECTOR_SIZE), BLOCK_SECTOR_SIZE);
       block_write(swap_block, bm_sector + i, buffer);
     }
   free(buffer);
