@@ -82,28 +82,28 @@ swap_in(struct page *page)
 int64_t
 swap_free(struct page *page)
 {
-	// Acquire the swap table element to delete
+  // Acquire the swap table element to delete
   lock_acquire (&swap_lock);
   struct swap *s = hash_entry(swap_lookup(page->kaddr, page->tid), struct swap, swaphashelem);
   lock_release (&swap_lock);
 
   // If element is found:
   if (s != NULL)
-      {
-	  // get the sector of the swap partition where the page is stored
+    {
+      // get the sector of the swap partition where the page is stored
       size_t bm_sector = s->sector;
-	  // Delete the swap_table element
-        lock_acquire (&swap_lock);
-        hash_delete(&swap_table, &s->swaphashelem);
-        lock_release (&swap_lock);
+      // Delete the swap_table element
+      lock_acquire (&swap_lock);
+      hash_delete(&swap_table, &s->swaphashelem);
+      lock_release (&swap_lock);
 
-        // free the element
-        free(s);
-// update the bitmap
-        bitmap_scan_and_flip(sector_bm, bm_sector, SECTORS_IN_PAGE, true);
-        //return the sector where the page is stored
-        return bm_sector;
-      }
+      // free the element
+      free(s);
+      // update the bitmap
+      bitmap_scan_and_flip(sector_bm, bm_sector, SECTORS_IN_PAGE, true);
+      //return the sector where the page is stored
+      return bm_sector;
+    }
   // If element is not found, return invalid index -1
   return -1;
 }
@@ -157,12 +157,12 @@ static bool
 swap_less (const struct hash_elem *a, const struct hash_elem *b,
            void *aux UNUSED)
 {
-	struct swap *s1 = hash_entry (a, struct swap, swaphashelem);
-	struct swap *s2 = hash_entry (b, struct swap, swaphashelem);
-	if (s1->tid == s2->tid) {
-		return s1->kaddr < s2->kaddr;
-	}
-	return s1->tid < s2->tid;
+  struct swap *s1 = hash_entry (a, struct swap, swaphashelem);
+  struct swap *s2 = hash_entry (b, struct swap, swaphashelem);
+  if (s1->tid == s2->tid) {
+      return s1->kaddr < s2->kaddr;
+  }
+  return s1->tid < s2->tid;
 }
 
 /* Returns the hash_elem corresponding to the given virtual user address */
@@ -174,4 +174,15 @@ swap_lookup (void *kaddr, tid_t tid)
   s.kaddr = kaddr;
   s.tid = tid;
   return hash_find (&swap_table, &s.swaphashelem);
+}
+
+void print_swap_table() {
+  printf("====SWAP_TABLE====");
+  struct hash_iterator i;
+  hash_first (&i, &swap_table);
+  while (hash_next (&i))
+    {
+      struct swap *s = hash_entry (hash_cur (&i), struct swap, swaphashelem);
+      printf("%d: TID: %d - KADDR: %d", s->sector, s->tid, (int)s->kaddr);
+    }
 }
