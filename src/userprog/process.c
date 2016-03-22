@@ -593,6 +593,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       uint8_t *kpage = frame_get_page (PAL_USER, p);
       if (kpage == NULL)
         return false;
+      p->kaddr = kpage;
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
@@ -649,6 +650,7 @@ setup_stack (void **esp)
           frame_free_page (kpage);
         }
     }
+  p->kaddr = kpage;
   return success;
 }
 
