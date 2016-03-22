@@ -166,37 +166,42 @@ page_fault (struct intr_frame *f)
      unallowed memory access. */
   if (user || is_user_vaddr (fault_addr))
     {
-      if (fault_addr >= STACK_LIMIT && fault_addr >= f->esp - PGSIZE
+      if (fault_addr > STACK_LIMIT && fault_addr > f->esp - PGSIZE
           && is_user_vaddr (fault_addr))
         {
           void *upage = pg_round_down (fault_addr);
-          if (!page_new_page (upage, PAGE_WRITABLE, NULL, 0, 0))
-            goto exit;
-          struct page *p = page_get_page (upage);
-          if (p == NULL)
+          do
             {
-              page_remove_page (upage);
-              goto exit;
+              if (!page_new_page (upage, PAGE_WRITABLE, NULL, 0, 0))
+                goto exit;
+              struct page *p = page_get_page (upage);
+              if (p == NULL)
+                {
+                  page_remove_page (upage);
+                  goto exit;
+                }
+              void *kpage = frame_get_page (PAL_USER | PAL_ZERO, p);
+              if (kpage == NULL)
+                {
+                  page_remove_page (upage);
+                  goto exit;
+                }
+              if (!install_page (upage, kpage, true))
+                {
+                  page_remove_page (upage);
+                  frame_free_page (kpage);
+                  goto exit;
+                }
+              p->kaddr = kpage;
+              upage += PGSIZE;
             }
-          void *kpage = frame_get_page (PAL_USER | PAL_ZERO, p);
-          if (kpage == NULL)
-            {
-              page_remove_page (upage);
-              goto exit;
-            }
-          if (!install_page (upage, kpage, true))
-            {
-              page_remove_page (upage);
-              frame_free_page (kpage);
-              goto exit;
-            }
-          p->kaddr = kpage;
+          while (page_get_page (upage) == NULL);
           return;
         }
       if (not_present && syscall_user_memory (fault_addr, write) != NULL)
         return;
 exit:
-      printf("page_fault: %x\n", (unsigned)fault_addr);
+//      printf("page_fault: %x\n", (unsigned)fault_addr);
       pre_exit (-1);
       thread_exit ();
     }
