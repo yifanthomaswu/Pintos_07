@@ -39,7 +39,7 @@ bool page_create_table (struct hash *page_table);
 void page_destroy_table (struct hash *page_table);
 bool page_new_page (void *page, enum page_flags flags, const char *file_name,
                     off_t ofs, uint32_t read_bytes);
-struct page *page_get_page (const void *page);
+struct page *page_get_page (void *page);
 void page_remove_page (void *page);
 bool page_load_page (void *page, bool write);
 

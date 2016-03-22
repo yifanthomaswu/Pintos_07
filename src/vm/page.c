@@ -3,7 +3,6 @@
 #include <string.h>
 #include "devices/timer.h"
 #include "threads/malloc.h"
-#include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
@@ -101,10 +100,6 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
   struct page *p = malloc (sizeof(struct page));
   if (p == NULL)
     return false;
-  p->uaddr = page;
-  p->last_accessed_time = timer_ticks();
-  p->flags = flags;
-  p->pinned = false;
   if (file_name != NULL)
     {
       int length = strlen (file_name) + 1;
@@ -132,8 +127,14 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
     }
   else
     p->file_name = NULL;
+  p->tid = thread_tid ();
+  p->uaddr = page;
+  p->flags = flags;
   p->ofs = ofs;
   p->read_bytes = read_bytes;
+  p->last_accessed_time = timer_ticks ();
+  p->pd = thread_current ()->pagedir;
+  p->pinned = false;
 
   // Inset the page into the page_table
   if (hash_insert (&thread_current ()->page_table, &p->pagehashelem) != NULL)
@@ -149,7 +150,7 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
 }
 
 struct page *
-page_get_page (const void *page)
+page_get_page (void *page)
 {
   struct hash_elem *e = page_lookup (page);
   if (e == NULL)
@@ -195,6 +196,7 @@ page_load_page (void *page, bool write)
           return false;
         }
       p->flags ^= PAGE_ZERO;
+      p->kaddr = kaddr;
     }
   else
     {
