@@ -6,6 +6,7 @@
 #include "threads/pte.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/interrupt.h"
 #include "userprog/pagedir.h"
 #include "vm/swap.h"
 
@@ -40,103 +41,120 @@ frame_init (void)
 void *
 frame_get_page (enum palloc_flags flags, struct page *current_page)
 {
-  ASSERT (flags & PAL_USER);
+  ASSERT(flags & PAL_USER);
 
   void *page = palloc_get_page (flags);
   // If there is no free frame:
-  if (page == NULL) {
+  if (page == NULL)
+    {
       // Swap algorithm: WSClock
 
       // Set up locals
-      struct frame *victim;
+      struct frame *victim = NULL;
       struct frame *candidate_victims[VICTIM_CANDIDATES];
       int num_candidate = 0;
       int64_t age = 0;
       struct list_elem *first_elem = hand;
+      bool dirty;
       page_swapping:
       // If the hand points to the lists tail, start over from beginning of list
-      if (hand == list_tail(&clock))
-	hand = list_begin(&clock);
+      if (hand == list_tail (&clock))
+        hand = list_begin (&clock);
       // acquire frame that "hand" points to
       struct frame *e = list_entry(hand, struct frame, framelistelem);
       // get this frame's page's page_directory
       struct page *e_page = e->page;
-      if(!e_page->pinned) {
-	  void *e_uaddr = e_page->uaddr;
-	  // find the age of last access for this page
-	  int64_t page_age = timer_elapsed(e_page->last_accessed_time);
-	  if(page_age > TAU) {
-	      // If it's older than the parameter TAU,
-	      // update local variables to store best victim yet
-	      age = page_age;
-	      victim = e;
-	      if(!pagedir_is_dirty(e_page->pd, e_uaddr)) {
-		  // If the page is clean, choose this page and perform swap
-		  goto do_swap;
-	      }
-	      //if the page is dirty,
-	      if (e->page->flags & PAGE_SWAP) {
-		  // If we swapped out the page as a candidate, free the swap slot and clear the flag
-		  swap_free(e->page);
-		  e->page->flags &= !PAGE_SWAP;
-	      }
-	      if (num_candidate < VICTIM_CANDIDATES)
-		{
-		  // and if there is space for extra victims to be swapped,
-		  // add the page to the candidate_victims array
-		  candidate_victims[num_candidate] = e;
-		  num_candidate++;
-		}
-	  }
-	  else {
-	      // if the page is not older than TAU,
-	      if(page_age > age) {
-		  // but is the oldest page yet,
-		  // update locals
-		  age = page_age;
-		  victim = e;
-	      }
-	  }
-      }
+      ASSERT(e->page->pd !=NULL);
+      //      printf("frame_get_page: %s\n", e_page->file_name);
+      if (!e_page->pinned)
+        {
+          void *e_uaddr = e_page->uaddr;
+          // find the age of last access for this page
+          int64_t page_age = timer_elapsed (e_page->last_accessed_time);
+          if (page_age > TAU)
+            {
+              // If it's older than the parameter TAU,
+              // update local variables to store best victim yet
+              age = page_age;
+              victim = e;
+              //	      ASSERT (e_page->pd !=NULL);
+              if (!pagedir_is_dirty (e_page->pd, e_uaddr))
+                {
+                  // If the page is clean, choose this page and perform swap
+                  goto do_swap;
+                }
+              //if the page is dirty,
+              if (e->page->flags & PAGE_SWAP)
+                {
+                  // If we swapped out the page as a candidate, free the swap slot and clear the flag
+                  swap_free (e->page);
+                  e->page->flags &= !PAGE_SWAP;
+                }
+              if (num_candidate < VICTIM_CANDIDATES)
+                {
+                  // and if there is space for extra victims to be swapped,
+                  // add the page to the candidate_victims array
+                  candidate_victims[num_candidate] = e;
+                  num_candidate++;
+                }
+            }
+          else
+            {
+              // if the page is not older than TAU,
+              if (page_age > age)
+                {
+                  // but is the oldest page yet,
+                  // update locals
+                  age = page_age;
+                  victim = e;
+                }
+            }
+        }
       // Move hand up one entry
-      hand = list_next(hand);
+      hand = list_next (hand);
       // If the clock is fully traversed, do the swap, otherwise restart algorithm
       if (hand != first_elem)
-	goto page_swapping;
+        goto page_swapping;
 
       do_swap:
       // If the page is clean, it doesn't have to be copied, so just return true
-      if(pagedir_is_dirty(victim->page->pd, victim->page->uaddr)) {
-	  // Perform the swap of the victim
-	  swap_out(victim->page);
-	  // victim->page->flags |= PAGE_SWAP;
-	  // if victim in candidate_victim[] this means it will do nothing
-	  pagedir_set_dirty(victim->page->pd, victim->page->uaddr, false);
-	  // free the page inside the frame
-	  frame_free_page(victim->kaddr);
-	  // get new page using palloc_get_page
-	  page = palloc_get_page (flags);
-	  // release lock after the this so new page can be read in into victim
-	  int n;
-	  for (n = 0; n < VICTIM_CANDIDATES; n++)
-	    {
-	      // swap all the candidates out as well
-	      struct frame *candidate_victim = candidate_victims[n];
-	      if (candidate_victim != NULL)
-		{
-		  swap_out(candidate_victim->page);
-		  pagedir_set_dirty(candidate_victim->page->pd, candidate_victim->page->uaddr, false);
-		}
-	    }
-      }
+      dirty = pagedir_is_dirty (victim->page->pd, victim->page->uaddr);
       // Remove mapping in pagedir
-      pagedir_clear_page(victim->page->pd, victim->page->uaddr);
+      pagedir_clear_page (victim->page->pd, victim->page->uaddr);
+      if (dirty)
+        {
+          // Perform the swap of the victim
+          ASSERT(victim->page !=NULL);
+          swap_out (victim->page);
+        }
+      // victim->page->flags |= PAGE_SWAP;
+      // if victim in candidate_victim[] this means it will do nothing
+      // free the page inside the frame
+      frame_free_page (victim->kaddr);
+      // get new page using palloc_get_page
+      page = palloc_get_page (flags);
+      // release lock after the this so new page can be read in into victim
+      int n;
+      for (n = 0; n < num_candidate; n++)
+        {
+          // swap all the candidates out as well
+          struct frame *candidate_victim = candidate_victims[n];
+          if (candidate_victim != NULL)
+            {
+              ASSERT(candidate_victim->page !=NULL);
+              swap_out (candidate_victim->page);
+              pagedir_set_dirty (candidate_victim->page->pd,
+                                 candidate_victim->page->uaddr, false);
+            }
+        }
 
-  }
+
+
+    }
   // Set up the frame
   struct frame *f = malloc (sizeof(struct frame));
   if (f == NULL)
-    PANIC ("frame_get_multiple: out of memory");
+    PANIC("frame_get_multiple: out of memory");
   f->kaddr = page;
   f->page = current_page;
   // insert frame into frame_table
@@ -146,8 +164,9 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
 
   // insert frame into clock
   lock_acquire (&clock_lock);
-  list_push_back(&clock, &f->framelistelem);
+  list_push_back (&clock, &f->framelistelem);
   lock_release (&clock_lock);
+  ASSERT (page !=NULL);
   return page;
 }
 
@@ -155,11 +174,9 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
 void
 frame_free_page (void *page)
 {
-  void *addr = page;
-
   // Remove frame from frame_table
   lock_acquire (&frame_lock);
-  struct hash_elem *he = hash_delete (&frame_table, frame_lookup (addr));
+  struct hash_elem *he = hash_delete (&frame_table, frame_lookup (page));
   lock_release (&frame_lock);
 
   struct frame *entry = hash_entry (he, struct frame, framehashelem);
@@ -170,7 +187,6 @@ frame_free_page (void *page)
   lock_release (&clock_lock);
 
   // free frame
-  if (he != NULL)
     free (entry);
   // free page
   palloc_free_page (page);

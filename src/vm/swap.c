@@ -56,10 +56,15 @@ bool
 swap_in(struct page *page)
 {
   void *kaddr = frame_get_page(PAL_ZERO | PAL_USER, page);
+  ASSERT (kaddr!=NULL);
   int64_t bm_sector = swap_free(page);
   // if doesn't exist, return failure of loading in
   if (bm_sector == -1)
+    {
+
+  printf("swap_in\n");
     return false;
+    }
   // Set up a buffer to read page into
   void* buffer = malloc(BLOCK_SECTOR_SIZE);
   if (buffer == NULL)
@@ -69,6 +74,7 @@ swap_in(struct page *page)
   for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
       block_read(swap_block, bm_sector + i, buffer);
+      ASSERT (kaddr + (i*BLOCK_SECTOR_SIZE) !=NULL);
       memcpy(kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
     }
   free(buffer);
@@ -104,9 +110,11 @@ swap_free(struct page *page)
       // update the bitmap
       bitmap_scan_and_flip(sector_bm, bm_sector, SECTORS_IN_PAGE, true);
       //return the sector where the page is stored
+      printf("swap_free: before\n");
       return bm_sector;
     }
   // If element is not found, return invalid index -1
+  printf("swap_free: after\n");
   return -1;
 }
 
@@ -114,7 +122,7 @@ swap_free(struct page *page)
 bool
 swap_out(struct page *page)
 {
-  printf("swap_out: %d: %s (%d)\n", page->tid, page->file_name, (int)page->kaddr);
+//  printf("swap_out: %d: %s (%d)\n", page->tid, page->file_name, (int)page->kaddr);
   // mark swap_table entry in bitmap
   size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, SECTORS_IN_PAGE, false);
   // Panic the kernel if there is no space on the partition

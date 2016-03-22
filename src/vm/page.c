@@ -190,10 +190,15 @@ page_load_page (void *page, bool write)
       return true;
 
   if (p->flags & PAGE_SWAP)
-    return swap_in (p);
+    {
+      bool swap = swap_in (p);
+      ASSERT (swap);
+    return swap;
+    }
   else if (p->flags & PAGE_ZERO)
     {
-      void *kaddr = frame_get_page (PAL_USER | PAL_ZERO, page);
+      void *kaddr = frame_get_page (PAL_USER | PAL_ZERO, p);
+      ASSERT (kaddr != NULL);
       if (kaddr == NULL)
         return false;
       if (!install_page (page, kaddr, writable))
