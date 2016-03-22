@@ -1,5 +1,4 @@
 #include "vm/frame.h"
-#include <hash.h>
 #include <debug.h>
 #include "devices/timer.h"
 #include "threads/vaddr.h"
@@ -13,15 +12,6 @@
 #define TAU 50 // parameter for page age (in timer ticks)
 #define VICTIM_CANDIDATES 4 // number of additional dirty pages to store on swap partition
 
-/* frame_table entries contain the virtual kernel address and the page_directory */
-struct frame
-{
-  struct hash_elem framehashelem;
-  struct list_elem framelistelem;
-  void *kaddr;
-  struct page *page;
-};
-
 static struct hash frame_table; // frame_table
 static struct lock frame_lock; // Lock to synchronise frame_table changes
 static struct list clock; // Clock-list used for eviction algorithm
@@ -32,6 +22,7 @@ static struct list_elem *hand; // list_elem pointing to an element of the clock
 static unsigned frame_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool frame_less (const struct hash_elem *a, const struct hash_elem *b,
                         void *aux UNUSED);
+static struct hash_elem *frame_lookup (void *kaddr);
 
 /* Initialises the global static variables */
 void
@@ -49,7 +40,7 @@ frame_init (void)
 void *
 frame_get_page (enum palloc_flags flags, struct page *current_page)
 {
-  ASSERT (flags && PAL_USER);
+  ASSERT (flags & PAL_USER);
 
   void *page = palloc_get_page (flags);
   // If there is no free frame:
@@ -112,7 +103,7 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
       // If the page is clean, it doesn't have to be copied, so just return true
       if(pagedir_is_dirty(victim->page->pd, victim->page->uaddr)) {
 	  // Perform the swap of the victim
-	  swap_out(victim->page->pd, victim->page->tid, victim->kaddr);
+	  swap_out(victim->page);
 	  victim->page->flags |= PAGE_SWAP;
 	  // if victim in candidate_victim[] this means it will do nothing
 	  pagedir_set_dirty(victim->page->pd, victim->page->uaddr, false);
@@ -128,7 +119,7 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
 	      struct frame *candidate_victim = candidate_victims[n];
 	      if (candidate_victim != NULL)
 		{
-		  swap_out(candidate_victim->page->pd, candidate_victim->page->tid, candidate_victim->kaddr);
+		  swap_out(candidate_victim->page);
 		  pagedir_set_dirty(candidate_victim->page->pd, candidate_victim->page->uaddr, false);
 		}
 	    }
@@ -201,7 +192,7 @@ frame_less (const struct hash_elem *a, const struct hash_elem *b,
 }
 
 /* Returns the hash_elem corresponding to the given virtual kernel address */
-struct hash_elem *
+static struct hash_elem *
 frame_lookup (void *kaddr)
 {
   //Caller needs to hold frame_lock already
@@ -210,4 +201,13 @@ frame_lookup (void *kaddr)
   f.kaddr = kaddr;
   e = hash_find (&frame_table, &f.framehashelem);
   return e;
+}
+
+struct frame *
+frame_get_frame (void *kaddr)
+{
+  struct hash_elem *e = frame_lookup (kaddr);
+  if (e == NULL)
+    return NULL;
+  return hash_entry(e, struct frame, framehashelem);
 }

@@ -3,6 +3,7 @@
 
 #include <hash.h>
 #include <stdbool.h>
+#include "threads/thread.h"
 #include "filesys/off_t.h"
 
 enum page_flags
@@ -38,9 +39,9 @@ bool page_create_table (struct hash *page_table);
 void page_destroy_table (struct hash *page_table);
 bool page_new_page (void *page, enum page_flags flags, const char *file_name,
                     off_t ofs, uint32_t read_bytes);
+struct page *page_get_page (const void *page);
 void page_remove_page (void *page);
 bool page_load_page (void *page, bool write);
 
-struct hash_elem *page_lookup (const void *uaddr);
 
 #endif /* vm_page_h */

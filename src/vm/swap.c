@@ -22,6 +22,8 @@ static struct bitmap *sector_bm;
 /* A hashmap for the actual swap table */
 static struct hash swap_table;
 
+int64_t swap_free(struct page *page);
+
 static unsigned swap_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool swap_less (const struct hash_elem *a, const struct hash_elem *b,
                        void *aux UNUSED);
@@ -51,8 +53,8 @@ swap_init (void)
 bool
 swap_in(struct page *page)
 {
-  struct frame *f = hash_entry(frame_lookup(page->kaddr), struct frame, framehashelem);
-  if (!swap_out(f->page))
+  struct frame *f = frame_get_frame(page->kaddr);
+  if (f == NULL || !swap_out(f->page))
     PANIC("ERROR: couldn't swap out page to swap in another one\n");
   int64_t bm_sector = swap_free(page);
   // if doesn't exist, return failure of loading in
