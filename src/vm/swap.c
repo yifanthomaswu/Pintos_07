@@ -2,6 +2,7 @@
 #include <bitmap.h>
 #include <hash.h>
 #include <debug.h>
+#include <stdio.h>
 #include <string.h>
 #include "devices/block.h"
 #include "threads/synch.h"
