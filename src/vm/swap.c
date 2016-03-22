@@ -54,9 +54,7 @@ swap_init (void)
 bool
 swap_in(struct page *page)
 {
-  struct frame *f = frame_get_frame(page->kaddr);
-  if (f == NULL || !swap_out(f->page))
-    PANIC("ERROR: couldn't swap out page to swap in another one\n");
+  void *kaddr = frame_get_page(PAL_ZERO | PAL_USER, page);
   int64_t bm_sector = swap_free(page);
   // if doesn't exist, return failure of loading in
   if (bm_sector == -1)
@@ -70,7 +68,7 @@ swap_in(struct page *page)
   for (i = 0; i < SECTORS_IN_PAGE; i++)
     {
       block_read(swap_block, bm_sector + i, buffer);
-      memcpy(page->kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
+      memcpy(kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
     }
   free(buffer);
   // Clear swap flag in supplementary page table entry
@@ -177,7 +175,7 @@ swap_lookup (void *kaddr, tid_t tid)
   return hash_find (&swap_table, &s.swaphashelem);
 }
 
-void print_swap_table() {
+void print_swap_table(void) {
   printf("====SWAP_TABLE====");
   struct hash_iterator i;
   hash_first (&i, &swap_table);

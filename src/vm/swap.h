@@ -10,6 +10,6 @@ bool swap_out(struct page *);
 bool swap_in(struct page *);
 
 // Debug helper
-void print_swap_table();
+void print_swap_table(void);
 
 #endif /* vm_swap_h_*/

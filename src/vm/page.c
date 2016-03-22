@@ -134,7 +134,7 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
   p->read_bytes = read_bytes;
   p->last_accessed_time = timer_ticks ();
   p->pd = thread_current ()->pagedir;
-  p->pinned = false;
+  p->pinned = flags & PAGE_SHARE;
 
   // Inset the page into the page_table
   if (hash_insert (&thread_current ()->page_table, &p->pagehashelem) != NULL)
