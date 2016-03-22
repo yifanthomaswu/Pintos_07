@@ -12,8 +12,7 @@ enum page_flags
   PAGE_WRITABLE = 2,
   PAGE_SHARE = 4,
   PAGE_FRAME = 8,
-  PAGE_SWAP = 16,
-  PAGE_FILESYS = 32
+  PAGE_SWAP = 16
 };
 
 /* A struct for pages, containing fields used to handle page_faults */
