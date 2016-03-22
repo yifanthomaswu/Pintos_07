@@ -72,6 +72,8 @@ swap_in(struct page *page)
       memcpy(page->kaddr + (i*BLOCK_SECTOR_SIZE), buffer, BLOCK_SECTOR_SIZE);
     }
   free(buffer);
+  // Clear swap flag in supplementary page table entry
+  page->flags &= !PAGE_SWAP;
   // Loading back successful, return true
   return true;
 }
@@ -137,6 +139,8 @@ swap_out(struct page *page)
       block_write(swap_block, bm_sector + i, buffer);
     }
   free(buffer);
+  // Set swap flag in supplementary page table entry
+  page->flags |= PAGE_SWAP;
   return true;
 }
 
