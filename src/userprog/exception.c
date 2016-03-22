@@ -201,7 +201,6 @@ page_fault (struct intr_frame *f)
       if (not_present && syscall_user_memory (fault_addr, write) != NULL)
         return;
 exit:
-//      printf("page_fault: %x\n", (unsigned)fault_addr);
       pre_exit (-1);
       thread_exit ();
     }

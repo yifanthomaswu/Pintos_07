@@ -153,6 +153,7 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
   return true;
 }
 
+/* Get a page from page_table */
 struct page *
 page_get_page (void *page)
 {
@@ -172,6 +173,7 @@ page_remove_page (void *page)
     page_destroy (e, NULL);
 }
 
+/* Load all zero page, page from swap or page from file to frame */
 bool
 page_load_page (void *page, bool write)
 {
@@ -190,15 +192,10 @@ page_load_page (void *page, bool write)
       return true;
 
   if (p->flags & PAGE_SWAP)
-    {
-      bool swap = swap_in (p);
-      ASSERT (swap);
-    return swap;
-    }
+    return swap_in (p);
   else if (p->flags & PAGE_ZERO)
     {
       void *kaddr = frame_get_page (PAL_USER | PAL_ZERO, p);
-      ASSERT (kaddr != NULL);
       if (kaddr == NULL)
         return false;
       if (!install_page (page, kaddr, writable))
@@ -230,6 +227,7 @@ page_load_page (void *page, bool write)
   return true;
 }
 
+/* Add a mapping for shared page for the current process */
 static bool
 page_load_shared (struct page *p)
 {
@@ -250,6 +248,7 @@ page_load_shared (struct page *p)
   return false;
 }
 
+/* Remove the mapping for shared page for the current process */
 static void
 page_unload_shared (struct page *p)
 {
