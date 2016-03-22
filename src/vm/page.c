@@ -126,7 +126,10 @@ page_new_page (void *page, enum page_flags flags, const char *file_name,
         p->file = NULL;
     }
   else
-    p->file_name = NULL;
+    {
+      p->file_name = NULL;
+      p->file = NULL;
+    }
   p->tid = thread_tid ();
   p->uaddr = page;
   p->flags = flags;

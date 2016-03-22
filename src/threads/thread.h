@@ -119,7 +119,6 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;             /* Page directory. */
     struct hash page_table;
-    int stack_pages;
     bool active_proc;
 #endif
 

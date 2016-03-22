@@ -640,10 +640,7 @@ setup_stack (void **esp)
     {
       success = install_page (upage, kpage, true);
       if (success)
-        {
-          thread_current ()->stack_pages = 1;
-          *esp = PHYS_BASE;
-        }
+        *esp = PHYS_BASE;
       else
         {
           page_remove_page (upage);

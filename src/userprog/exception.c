@@ -3,9 +3,15 @@
 #include <stdio.h>
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/palloc.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+
+#define STACK_LIMIT (PHYS_BASE - (2048 * PGSIZE))
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -160,9 +166,36 @@ page_fault (struct intr_frame *f)
      unallowed memory access. */
   if (user || is_user_vaddr (fault_addr))
     {
-//      printf("page_fault\n");
+      if (fault_addr >= STACK_LIMIT && fault_addr >= f->esp - PGSIZE
+          && is_user_vaddr (fault_addr))
+        {
+          void *upage = pg_round_down (fault_addr);
+          if (!page_new_page (upage, PAGE_WRITABLE, NULL, 0, 0))
+            goto exit;
+          struct page *p = page_get_page (upage);
+          if (p == NULL)
+            {
+              page_remove_page (upage);
+              goto exit;
+            }
+          void *kpage = frame_get_page (PAL_USER | PAL_ZERO, p);
+          if (kpage == NULL)
+            {
+              page_remove_page (upage);
+              goto exit;
+            }
+          if (!install_page (upage, kpage, true))
+            {
+              page_remove_page (upage);
+              frame_free_page (kpage);
+              goto exit;
+            }
+          p->kaddr = kpage;
+          return;
+        }
       if (not_present && syscall_user_memory (fault_addr, write) != NULL)
         return;
+exit:
       pre_exit (-1);
       thread_exit ();
     }
