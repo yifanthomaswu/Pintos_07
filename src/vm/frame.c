@@ -75,6 +75,11 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
 		  goto do_swap;
 	      }
 	      //if the page is dirty,
+	      if (e->page->flags & PAGE_SWAP) {
+		  // If we swapped out the page as a candidate, free the swap slot and clear the flag
+		  swap_free(e->page);
+		  e->page->flags &= !PAGE_SWAP;
+	      }
 	      if (num_candidate < VICTIM_CANDIDATES)
 		{
 		  // and if there is space for extra victims to be swapped,
@@ -104,7 +109,7 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
       if(pagedir_is_dirty(victim->page->pd, victim->page->uaddr)) {
 	  // Perform the swap of the victim
 	  swap_out(victim->page);
-	  victim->page->flags |= PAGE_SWAP;
+	  // victim->page->flags |= PAGE_SWAP;
 	  // if victim in candidate_victim[] this means it will do nothing
 	  pagedir_set_dirty(victim->page->pd, victim->page->uaddr, false);
 	  // free the page inside the frame
@@ -123,9 +128,6 @@ frame_get_page (enum palloc_flags flags, struct page *current_page)
 		  pagedir_set_dirty(candidate_victim->page->pd, candidate_victim->page->uaddr, false);
 		}
 	    }
-      }
-      else {
-	  victim->page->flags |= PAGE_FILESYS;
       }
       // Remove mapping in pagedir
       pagedir_clear_page(victim->page->pd, victim->page->uaddr);

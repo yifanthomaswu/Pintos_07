@@ -8,6 +8,7 @@
 void swap_init (void);
 bool swap_out(struct page *);
 bool swap_in(struct page *);
+int64_t swap_free(struct page *);
 
 // Debug helper
 void print_swap_table(void);

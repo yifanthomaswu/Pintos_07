@@ -111,6 +111,7 @@ swap_free(struct page *page)
 bool
 swap_out(struct page *page)
 {
+  printf("swap_out: %d: %s (%d)\n", page->tid, page->file_name, (int)page->kaddr);
   // mark swap_table entry in bitmap
   size_t bm_sector = bitmap_scan_and_flip(sector_bm, 0, SECTORS_IN_PAGE, false);
   // Panic the kernel if there is no space on the partition
