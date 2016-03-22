@@ -213,7 +213,6 @@ thread_create (const char *name, int priority,
 
   /* Set the child's parent_tid field to its parent's tid. */
   t->parent_tid = thread_current ()->tid;
-  t->active_proc = true;
   struct child_tid *child = malloc (sizeof(struct child_tid));
   if (child == NULL)
     {
@@ -500,7 +499,6 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
 
-  t->active_proc = false;
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
@@ -510,6 +508,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init (&t->children);
   list_init (&t->files);
   list_init (&t->mapids);
+  t->active_proc = false;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

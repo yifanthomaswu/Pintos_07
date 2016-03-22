@@ -214,7 +214,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
 #ifdef USERPROG
-  if (thread_current ()->active_proc && thread_current ()->tid > 2)
+  if (thread_current ()->active_proc) //&& thread_current ()->tid > 2)
     {
       // Every K ticks
       if (timer_ticks () % K == 0)

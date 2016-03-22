@@ -7,6 +7,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include "userprog/syscall.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -188,7 +189,9 @@ page_load_page (void *page, bool write)
     if (page_load_shared (p))
       return true;
 
-  if (p->flags & PAGE_ZERO)
+  if (p->flags & PAGE_SWAP)
+    return swap_in (p);
+  else if (p->flags & PAGE_ZERO)
     {
       void *kaddr = frame_get_page (PAL_USER | PAL_ZERO, page);
       if (kaddr == NULL)

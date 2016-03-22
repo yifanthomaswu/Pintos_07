@@ -10,6 +10,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include "vm/frame.h"
 
 #define SECTORS_IN_PAGE 8
@@ -72,7 +73,9 @@ swap_in(struct page *page)
     }
   free(buffer);
   // Clear swap flag in supplementary page table entry
-  page->flags &= !PAGE_SWAP;
+  page->flags &= ~PAGE_SWAP;
+  page->kaddr = kaddr;
+  install_page(page->uaddr,kaddr,page->flags & PAGE_WRITABLE);
   // Loading back successful, return true
   return true;
 }
